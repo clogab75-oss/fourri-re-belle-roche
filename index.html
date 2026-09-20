@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Fourrière de Belle Roche</title>
+  <meta name="description" content="Retrouvez votre véhicule mis en fourrière, consultez les véhicules à vendre et échangez directement avec les employés.">
+  <meta name="theme-color" content="#081a28">
+  <!-- Protection supplémentaire : le site ne peut charger que ses propres fichiers et parler à Supabase. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://*.supabase.co; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; base-uri 'self'; form-action 'self'; object-src 'none'">
+  <link rel="icon" type="image/png" href="assets/img/favicon.png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="stylesheet" href="assets/css/base.css">
+  <link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+  <a class="skip" href="#view">Aller au contenu</a>
+  <div id="app"></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <noscript><p>Ce site a besoin de JavaScript pour fonctionner.</p></noscript>
+  <script src="js/config.js"></script>
+  <script src="assets/vendor/supabase.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
