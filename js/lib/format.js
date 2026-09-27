@@ -26,7 +26,7 @@ export function rel(d) {
 export const norm = (s) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 export const plateKey = (s) => String(s ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 export const plural = (n, one, many = one + 's') => `${n} ${n > 1 ? many : one}`;
-export const ROLE = { client: 'Client', employe: 'Employé', gerant: 'Gérant', admin: 'Administrateur' };
+export const ROLE = { client: 'Client', employe: 'Employé', gerant: 'Gérant', admin: 'Administrateur', police: 'Police', gendarmerie: 'Gendarmerie' };
 export const initials = (p) => ((p?.prenom || '?')[0] + (p?.nom || '')[0]).toUpperCase();
 const COLORS = { noir: '#111', blanc: '#f5f5f5', gris: '#8a949e', argent: '#c0c6cc', rouge: '#c62828', bordeaux: '#7b1e2b', bleu: '#1e5bb8', vert: '#2e7d32', jaune: '#f4c20d',
   orange: '#ef6c00', violet: '#6a3fb5', rose: '#e77fa6', marron: '#6d4c41', beige: '#d7c4a3', or: '#c9a227', turquoise: '#1fb5ad' };

@@ -1,6 +1,6 @@
 -- =====================================================================
 --  FOURRIÈRE DE BELLE ROCHE — Base de données
---  Fichier 3/6 : véhicules, claims, conversations, ventes, statistiques
+--  Fichier 3/7 : véhicules, claims, conversations, ventes, statistiques
 --  Toutes les écritures passent par ces fonctions : les permissions sont
 --  vérifiées ici, dans la base, jamais dans le navigateur.
 -- =====================================================================
@@ -94,8 +94,12 @@ begin
        set plate = v_plate, model = v_model, color = v_color, notes = v_notes,
            handling_fee = v_fee, daily_rate = v_rate,
            final_amount = case when v_old.final_amount is not null
-                               then private.billing_amount(v_fee, v_rate, v_old.created_at, v_old.billing_end_at)
+                               then round(private.billing_amount(v_fee, v_rate, v_old.created_at, v_old.billing_end_at)
+                                          * (100 - coalesce(v_old.discount_percent, 0)) / 100)
                                else null end,
+           original_amount = case when v_old.discount_percent is not null
+                                  then private.billing_amount(v_fee, v_rate, v_old.created_at, v_old.billing_end_at)
+                                  else null end,
            updated_by = v_uid, updated_by_name = v_name
      where id = p_id;
   exception when unique_violation then
@@ -194,13 +198,15 @@ begin
 end $$;
 
 -- Véhicule récupéré par son propriétaire (avec ou sans demande sur le site).
+-- Si un code promo est appliqué à la conversation de la demande gagnante, le montant réglé est réduit.
 create or replace function public.mark_vehicle_recovered(p_vehicle_id uuid, p_claim_id uuid default null)
 returns void
 language plpgsql security definer set search_path = public, private as $$
 declare
   v_uid uuid := private.require_staff();
   v_name text := private.display_name(v_uid);
-  v_v public.vehicles; v_claim public.claims; v_amount numeric; r record;
+  v_v public.vehicles; v_claim public.claims; v_wc public.conversations;
+  v_amount numeric; v_charge numeric; v_pct integer; v_code text; v_promo text; r record;
 begin
   select * into v_v from public.vehicles where id = p_vehicle_id for update;
   if not found then raise exception 'Véhicule introuvable.'; end if;
@@ -215,31 +221,46 @@ begin
     if not found or v_claim.status <> 'ouverte' then
       raise exception 'Cette demande n''est plus ouverte.';
     end if;
+    select * into v_wc from public.conversations where claim_id = p_claim_id;
+    if found and v_wc.discount_redemption_id is not null
+       and exists (select 1 from public.discount_redemptions where id = v_wc.discount_redemption_id and status = 'appliquee') then
+      v_pct := v_wc.discount_percent; v_code := v_wc.discount_code;
+    end if;
   end if;
   v_amount := coalesce(v_v.final_amount,
                 private.billing_amount(v_v.handling_fee, v_v.daily_rate, v_v.created_at, null));
+  v_charge := case when v_pct is null then v_amount else round(v_amount * (100 - v_pct) / 100) end;
+  v_promo := case when v_pct is null then '' else format(' (code %s, −%s %% au lieu de %s)', v_code, v_pct, private.fmt_money(v_amount)) end;
 
   update public.vehicles
      set status = 'recuperee', status_changed_at = now(), recovered_at = now(),
          recovered_by = v_claim.client_id, recovered_by_name = v_claim.client_name,
-         billing_end_at = coalesce(billing_end_at, now()), final_amount = v_amount,
+         billing_end_at = coalesce(billing_end_at, now()), final_amount = v_charge,
+         original_amount = case when v_pct is null then null else v_amount end,
+         discount_code = v_code, discount_percent = v_pct,
          updated_by = v_uid, updated_by_name = v_name
    where id = p_vehicle_id;
   if p_claim_id is not null then
     update public.claims
        set status = 'validee', closed_at = now(), processed_by = v_uid,
-           processed_by_name = v_name, amount_due = v_amount
+           processed_by_name = v_name, amount_due = v_charge
      where id = p_claim_id;
+    if v_pct is not null then
+      update public.discount_redemptions
+         set status = 'utilisee', used_at = now(), original_amount = v_amount, final_amount = v_charge
+       where id = v_wc.discount_redemption_id;
+    end if;
   end if;
 
   for r in select c.id as conv_id, c.claim_id, c.client_id from public.conversations c
             where c.vehicle_id = p_vehicle_id and c.type = 'claim' and c.status = 'ouverte' loop
     if p_claim_id is not null and r.claim_id is not distinct from p_claim_id then
       perform private.post_system_message(r.conv_id,
-        format('Véhicule récupéré. Montant réglé : %s. Merci de votre confiance !', private.fmt_money(v_amount)));
+        format('Véhicule récupéré. Montant réglé : %s%s. Merci de votre confiance !', private.fmt_money(v_charge), v_promo));
     else
       perform private.post_system_message(r.conv_id, 'Ce véhicule a été récupéré. La conversation est fermée.');
       update public.claims set status = 'annulee', closed_at = now() where id = r.claim_id and status = 'ouverte';
+      perform private.release_redemption(r.conv_id);
     end if;
     update public.conversations
        set status = 'fermee', closed_at = now(), closed_by = v_uid, closed_by_name = v_name
@@ -249,9 +270,9 @@ begin
   end loop;
 
   perform private.log_action('vehicle.recovered', 'vehicle', p_vehicle_id, p_vehicle_id,
-    format('%s a marqué le véhicule %s comme récupéré (%s)%s', v_name, v_v.plate, private.fmt_money(v_amount),
+    format('%s a marqué le véhicule %s comme récupéré (%s%s)%s', v_name, v_v.plate, private.fmt_money(v_charge), v_promo,
            case when v_claim.client_name is not null then ' par ' || v_claim.client_name else '' end),
-    jsonb_build_object('amount', v_amount));
+    jsonb_build_object('amount', v_charge, 'original_amount', v_amount, 'discount_percent', v_pct));
 end $$;
 
 create or replace function public.archive_vehicle(p_vehicle_id uuid) returns void
@@ -322,6 +343,7 @@ begin
   end if;
   insert into public.vehicle_sales (vehicle_id, price, description, listed_by, listed_by_name)
   values (p_vehicle_id, p_price, v_desc, v_uid, v_name);
+  delete from public.vehicle_sale_drafts where vehicle_id = p_vehicle_id;
   update public.vehicles set status = 'a_vendre', status_changed_at = now(),
          updated_by = v_uid, updated_by_name = v_name where id = p_vehicle_id;
   perform private.log_action('sale.list', 'vehicle', p_vehicle_id, p_vehicle_id,
@@ -361,16 +383,19 @@ begin
     format('%s a retiré le véhicule %s de la vente', private.display_name(v_uid), v_v.plate));
 end $$;
 
+drop function if exists public.mark_vehicle_sold(uuid, uuid, numeric, text);
 create or replace function public.mark_vehicle_sold(
   p_vehicle_id uuid, p_conversation_id uuid default null,
-  p_sold_price numeric default null, p_buyer_name text default null)
+  p_sold_price numeric default null, p_buyer_name text default null, p_option_ids uuid[] default '{}')
 returns void
 language plpgsql security definer set search_path = public, private as $$
 declare
   v_uid uuid := private.require_manager();
   v_name text := private.display_name(v_uid);
   v_v public.vehicles; v_s public.vehicle_sales; v_c public.conversations;
-  v_buyer_id uuid; v_buyer text := nullif(btrim(coalesce(p_buyer_name, '')), ''); v_price numeric; r record;
+  v_buyer_id uuid; v_buyer text := nullif(btrim(coalesce(p_buyer_name, '')), ''); v_price numeric;
+  v_pct integer; v_code text; v_red uuid; r record;
+  v_option_total numeric := 0; v_options jsonb := '[]'::jsonb; v_option_count integer; v_base_price numeric;
 begin
   select * into v_v from public.vehicles where id = p_vehicle_id for update;
   if not found or v_v.status <> 'a_vendre' then raise exception 'Ce véhicule n''est pas à vendre.'; end if;
@@ -381,21 +406,42 @@ begin
     if not found then raise exception 'Conversation d''achat introuvable pour ce véhicule.'; end if;
     v_buyer_id := v_c.client_id;
     v_buyer := v_c.client_name;
+    if v_c.discount_redemption_id is not null
+       and exists (select 1 from public.discount_redemptions where id = v_c.discount_redemption_id and status = 'appliquee') then
+      v_pct := v_c.discount_percent; v_code := v_c.discount_code; v_red := v_c.discount_redemption_id;
+    end if;
   elsif v_buyer is null then
     raise exception 'Indiquez l''acheteur.';
   end if;
-  v_price := coalesce(p_sold_price, v_s.price);
-  if v_price <= 0 then raise exception 'Prix de vente invalide.'; end if;
+  select count(*) into v_option_count from public.sale_options
+   where id = any(coalesce(p_option_ids, '{}')) and active;
+  if v_option_count <> (select count(distinct x) from unnest(coalesce(p_option_ids, '{}')) as x) then
+    raise exception 'Une option sélectionnée est invalide ou désactivée.';
+  end if;
+  select coalesce(sum(price), 0), coalesce(jsonb_agg(jsonb_build_object('id', id, 'label', label, 'price', price) order by label), '[]'::jsonb)
+    into v_option_total, v_options
+    from public.sale_options where id = any(coalesce(p_option_ids, '{}')) and active;
+  -- prix par défaut = prix de l'annonce, réduit du code promo de l'acheteur ; un gérant peut imposer un autre prix
+  v_base_price := coalesce(p_sold_price, case when v_pct is null then v_s.price else round(v_s.price * (100 - v_pct) / 100) end);
+  v_price := v_base_price + v_option_total;
+  if v_price < 0 or (v_price = 0 and coalesce(v_pct, 0) < 100) then raise exception 'Prix de vente invalide.'; end if;
   update public.vehicle_sales
      set status = 'vendue', sold_at = now(), sold_price = v_price, buyer_id = v_buyer_id,
-         buyer_name = v_buyer, sold_by = v_uid, sold_by_name = v_name
+         buyer_name = v_buyer, sold_by = v_uid, sold_by_name = v_name,
+         discount_code = v_code, discount_percent = v_pct, selected_options = v_options
    where id = v_s.id;
+  if v_red is not null then
+    update public.discount_redemptions
+      set status = 'utilisee', used_at = now(), original_amount = v_s.price, final_amount = v_base_price
+     where id = v_red;
+  end if;
   update public.vehicles set status = 'vendue', status_changed_at = now(),
          updated_by = v_uid, updated_by_name = v_name where id = p_vehicle_id;
   for r in select id, client_id from public.conversations
             where vehicle_id = p_vehicle_id and type = 'vente' and status = 'ouverte' loop
     if r.id = p_conversation_id then
-      perform private.close_conv(r.id, v_uid, format('Véhicule vendu pour %s. Merci pour votre achat !', private.fmt_money(v_price)));
+      perform private.close_conv(r.id, v_uid, format('Véhicule vendu pour %s%s. Merci pour votre achat !', private.fmt_money(v_price),
+        case when v_pct is null then '' else format(' (code %s, −%s %% au lieu de %s)', v_code, v_pct, private.fmt_money(v_s.price)) end));
     else
       perform private.close_conv(r.id, v_uid, 'Ce véhicule a été vendu. La conversation est fermée.');
     end if;
@@ -403,8 +449,9 @@ begin
       format('Le véhicule %s a été vendu.', v_v.model), '#/messages/' || r.id, r.id, p_vehicle_id);
   end loop;
   perform private.log_action('sale.sold', 'vehicle', p_vehicle_id, p_vehicle_id,
-    format('%s a vendu le véhicule %s (%s) à %s pour %s', v_name, v_v.plate, v_v.model, v_buyer, private.fmt_money(v_price)),
-    jsonb_build_object('price', v_price, 'buyer', v_buyer));
+    format('%s a vendu le véhicule %s (%s) à %s pour %s%s', v_name, v_v.plate, v_v.model, v_buyer, private.fmt_money(v_price),
+           case when v_pct is null then '' else format(' (code %s, −%s %%)', v_code, v_pct) end),
+    jsonb_build_object('price', v_price, 'buyer', v_buyer, 'original_price', v_s.price, 'discount_percent', v_pct, 'options', v_options));
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -421,6 +468,7 @@ begin
   update public.conversations
      set status = 'fermee', closed_at = now(), closed_by = p_by, closed_by_name = private.display_name(p_by)
    where id = p_conv;
+  perform private.release_redemption(p_conv);
   if v_c.type = 'claim' then
     update public.claims set status = 'annulee', closed_at = now() where id = v_c.claim_id and status = 'ouverte';
     select * into v_v from public.vehicles where id = v_c.vehicle_id for update;
@@ -716,7 +764,8 @@ begin
     'archived', (select count(*) from public.vehicles where status = 'archivee'),
     'conversations', (select count(*) from public.conversations),
     'open_conversations', (select count(*) from public.conversations where status = 'ouverte'),
-    'interests', (select count(*) from public.conversations where type = 'vente'));
+    'interests', (select count(*) from public.conversations where type = 'vente'),
+    'discounts_used', (select count(*) from public.discount_redemptions where status = 'utilisee'));
 
   select coalesce(jsonb_object_agg(status, n), '{}'::jsonb) into v_status
     from (select status, count(*) as n from public.vehicles group by status) s;
@@ -742,7 +791,8 @@ begin
                                   from public.vehicles where status in ('en_fourriere', 'reclamee')), 0),
       'sales_total', coalesce((select sum(sold_price) from public.vehicle_sales where status = 'vendue'), 0),
       'sales_average', coalesce((select round(avg(sold_price)) from public.vehicle_sales where status = 'vendue'), 0),
-      'for_sale_value', coalesce((select sum(price) from public.vehicle_sales where status = 'a_vendre'), 0));
+      'for_sale_value', coalesce((select sum(price) from public.vehicle_sales where status = 'a_vendre'), 0),
+      'discounts_total', coalesce((select sum(original_amount - final_amount) from public.discount_redemptions where status = 'utilisee'), 0));
     select coalesce(jsonb_agg(jsonb_build_object('name', t.name, 'count', t.n) order by t.n desc), '[]'::jsonb)
       into v_staff
       from (select coalesce(created_by_name, 'Inconnu') as name, count(*) as n

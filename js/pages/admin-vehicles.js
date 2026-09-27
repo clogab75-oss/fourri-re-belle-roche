@@ -48,7 +48,7 @@ export async function list({ query, navigate }) {
     const nq = norm(term).trim(); const pk = plateKey(term);
     const rows = all.filter((v) => (status === 'tous' || v.status === status) && (!nq || (pk && plateKey(v.plate).includes(pk)) || norm(v.model).includes(nq) || norm(v.color).includes(nq)));
     count.textContent = `${rows.length} véhicule${rows.length > 1 ? 's' : ''}`;
-    body.replaceChildren(rows.length ? h('section', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'table stack' },
+    body.replaceChildren(rows.length ? h('section', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'table stackable' },
       h('thead', {}, h('tr', {}, ['', 'Plaque', 'Modèle', 'Couleur', 'Statut', 'Arrivée', 'Jours', 'Montant', 'Ajouté par'].map((t) => h('th', {}, t)))),
       h('tbody', {}, rows.map((v) => h('tr', { class: 'click', tabindex: '0', onClick: () => navigate('/admin/vehicules/' + v.id), onKeydown: (e) => { if (e.key === 'Enter') navigate('/admin/vehicules/' + v.id); } },
         h('td', { 'data-label': '' }, v.photos && v.photos[0] ? h('img', { class: 'thumb', src: api.photoUrl(v.photos[0].path), alt: '', loading: 'lazy' }) : h('span', { class: 'thumb' })),
@@ -113,10 +113,12 @@ export async function detail({ params, navigate }) {
           h('dt', {}, 'Statut'), h('dd', {}, badge(v.status)), h('dt', {}, 'Ajouté le'), h('dd', {}, dt(v.created_at)), h('dt', {}, 'Ajouté par'), h('dd', {}, v.created_by_name || '—'),
           h('dt', {}, 'Jours en fourrière'), h('dd', { class: 'num' }, String(v.days_in_impound)), h('dt', {}, 'Frais de dossier'), h('dd', {}, money(v.handling_fee)), h('dt', {}, 'Garde par jour'), h('dd', {}, money(v.daily_rate)),
           h('dt', {}, v.final_amount != null ? 'Montant figé' : 'Montant total'), h('dd', { class: 'num', style: { fontSize: '1.3rem', fontFamily: 'var(--font-display)' } }, money(v.current_amount)),
+          v.discount_code ? [h('dt', {}, 'Code promo'), h('dd', {}, `${v.discount_code} (−${v.discount_percent} %)`), h('dt', {}, 'Montant avant réduction'), h('dd', { class: 'num' }, money(v.original_amount))] : null,
           v.recovered_at ? [h('dt', {}, 'Récupéré le'), h('dd', {}, `${dt(v.recovered_at)}${v.recovered_by_name ? ' par ' + v.recovered_by_name : ''}`)] : null,
           v.auto_flagged_at ? [h('dt', {}, 'Passé en vente auto'), h('dd', {}, dt(v.auto_flagged_at))] : null,
           v.sale_status === 'a_vendre' ? [h('dt', {}, 'Prix de vente'), h('dd', {}, money(v.sale_price)), h('dt', {}, 'Annonce'), h('dd', {}, v.sale_description)] : null,
           v.sale_status === 'vendue' ? [h('dt', {}, 'Vendu à'), h('dd', {}, `${v.buyer_name || '—'} · ${money(v.sold_price)} · ${dt(v.sold_at)}`)] : null,
+          v.sale_status === 'vendue' && v.sale_discount_code ? [h('dt', {}, 'Code promo (vente)'), h('dd', {}, `${v.sale_discount_code} (−${v.sale_discount_percent} %) · prix avant réduction ${money(v.sale_price)}`)] : null,
           v.notes ? [h('dt', {}, 'Notes'), h('dd', {}, v.notes)] : null,
           v.updated_by_name ? [h('dt', {}, 'Dernière modification'), h('dd', {}, `${v.updated_by_name} · ${rel(v.updated_at)}`)] : null));
     } else {
@@ -142,8 +144,8 @@ export async function detail({ params, navigate }) {
       if (!(await confirmDialog({ title: 'Supprimer ce véhicule ?', message: `La fiche ${v.plate}, ses photos et ses conversations seront supprimées définitivement. L'action est enregistrée dans l'historique.`, confirmLabel: 'Supprimer définitivement', danger: true }))) return;
       try { const paths = await api.deleteVehicle(id); await api.removeFromStorage(paths); toast('Véhicule supprimé.', 'ok'); navigate('/admin/vehicules'); } catch (e) { toast(e.message, 'error'); } } }));
 
-    const convTable = convs.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table stack' }, h('thead', {}, h('tr', {}, ['Client', 'Type', 'Statut', 'Dernier message', ''].map((t) => h('th', {}, t)))),
-      h('tbody', {}, convs.map((c) => h('tr', {}, h('td', { 'data-label': 'Client' }, h('strong', {}, c.client_name)), h('td', { 'data-label': 'Type' }, c.type === 'claim' ? 'Récupération' : 'Achat'),
+    const convTable = convs.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table stackable' }, h('thead', {}, h('tr', {}, ['Client', 'Type', 'Statut', 'Dernier message', ''].map((t) => h('th', {}, t)))),
+      h('tbody', {}, convs.map((c) => h('tr', {}, h('td', { 'data-label': 'Client' }, h('strong', {}, c.client_name)), h('td', { 'data-label': 'Type' }, c.type === 'claim' ? 'Récupération' : 'Achat', c.discount_code ? h('span', { class: 'badge plain amber', style: { marginLeft: '8px' } }, `${c.discount_code} −${c.discount_percent} %`) : null),
         h('td', { 'data-label': 'Statut' }, h('span', { class: `badge plain ${c.status === 'ouverte' ? 'green' : 'gray'}` }, c.status === 'ouverte' ? 'Ouverte' : 'Fermée')), h('td', { 'data-label': 'Dernier message' }, rel(c.last_message_at)),
         h('td', { class: 'actions', 'data-label': '' }, h('a', { class: 'btn secondary sm', href: '#/messages/' + c.id }, 'Ouvrir')))))))
       : h('p', { class: 'muted' }, 'Aucune demande ni conversation pour ce véhicule.');

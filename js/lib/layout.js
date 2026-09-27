@@ -1,10 +1,14 @@
 /* Mise en page de l'espace personnel : menu latéral + contenu. */
 import { h, icon, pill } from './ui.js';
-import { state, isManager, isAdmin } from './api.js';
+import { state, isManager, isAdmin, isLawEnforcement } from './api.js';
 import { ROLE } from './format.js';
 
 export function adminLayout(active, ...content) {
-  const items = [
+  const lawOnly = isLawEnforcement();
+  const items = lawOnly ? [
+    ['/admin/saisies', 'car', 'Saisies', 'seizures'],
+    ['/admin/stats-saisies', 'chart', 'Statistiques saisies', 'seizure-stats'],
+  ] : [
     ['/admin', 'dashboard', 'Tableau de bord', 'dash'],
     ['/admin/vehicules', 'car', 'Véhicules', 'veh'],
     ['/messages', 'message', 'Messages', 'msg', state.unread.messages],
@@ -12,8 +16,10 @@ export function adminLayout(active, ...content) {
     ['/admin/personnel', 'users', 'Personnel', 'staff'],
     ['/admin/stats', 'chart', 'Statistiques', 'stats'],
     isManager() && ['/admin/tarifs', 'euro', 'Tarifs', 'pricing'],
+    isManager() && ['/admin/codes', 'ticket', 'Codes promo', 'codes'],
     isManager() && ['/admin/historique', 'history', 'Historique', 'history'],
     isManager() && ['/admin/discord', 'discord', 'Discord', 'discord'],
+    (isManager() || isLawEnforcement()) && ['/admin/saisies', 'car', 'Saisies', 'seizures'],
   ].filter(Boolean);
   const p = state.profile;
   const nav = h('nav', { class: 'side', 'aria-label': 'Espace personnel' },

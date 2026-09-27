@@ -196,7 +196,7 @@ select.input {
 .dialog-foot { padding: 14px 22px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; background: #f8fafc; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 
-.toasts { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 460px); pointer-events: none; }
+.toasts { position: fixed; left: 50%; top: calc(var(--header-h) + 12px); transform: translateX(-50%); z-index: 200; display: flex; flex-direction: column; gap: 8px; width: min(92vw, 460px); pointer-events: none; }
 .toast {
   pointer-events: auto; background: var(--navy-900); color: #fff; padding: 12px 16px; border-radius: 12px;
   box-shadow: var(--shadow-2); font-size: .95rem; display: flex; gap: 10px; align-items: flex-start;
@@ -205,7 +205,7 @@ select.input {
 .toast.ok { border-left-color: #3ecf8e; }
 .toast.error { border-left-color: #ff6b5e; }
 .toast.warn { border-left-color: var(--amber-500); }
-@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: none; } }
 
 .lightbox { position: fixed; inset: 0; z-index: 150; background: rgba(3, 10, 16, .94); display: grid; grid-template-rows: auto 1fr auto; animation: fade .15s; }
 .lightbox-top { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; color: #fff; }

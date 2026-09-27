@@ -22,9 +22,32 @@ export async function pricing() {
       field('Mise en vente automatique après (jours)', days, 'Sans réclamation active, le véhicule passe en attente de mise en vente.'), field('Suppression par un employé (minutes)', mins, "Un employé peut supprimer sa propre fiche pendant ce délai, si aucun client n'a réagi.")),
     h('label', { class: 'check' }, apply, h('span', {}, h('strong', {}, 'Appliquer aussi aux véhicules déjà en fourrière'), h('div', { class: 'hint' }, 'Sinon, seuls les nouveaux véhicules utiliseront ces tarifs.'))),
     h('div', {}, save));
-  return adminLayout('pricing', pageHead('Tarifs', 'Ces valeurs servent à calculer automatiquement le montant de chaque véhicule.'), h('div', { class: 'stack-lg' }, form,
+  const optionRows = h('div', { class: 'stack' }, loading());
+  const optionName = h('input', { class: 'input', maxlength: '80', placeholder: 'Ex. Plein rempli', required: true });
+  const optionPrice = h('input', { class: 'input', type: 'number', min: '0', step: '1', placeholder: 'Prix en €', required: true });
+  const addOption = btn('Ajouter une option', { ic: 'plus', onClick: () => busy(addOption, async () => {
+    await api.saveSaleOption(null, optionName.value, optionPrice.value, true); optionName.value = ''; optionPrice.value = ''; toast('Option ajoutée.', 'ok'); await loadOptions();
+  }) });
+  async function loadOptions() {
+    const rows = await api.saleOptions();
+    optionRows.replaceChildren(rows.length ? rows.map((o) => {
+      const label = h('input', { class: 'input', maxlength: '80', value: o.label });
+      const price = h('input', { class: 'input', type: 'number', min: '0', step: '1', value: String(o.price) });
+      const active = h('input', { type: 'checkbox', checked: o.active });
+      const saveOption = btn('Enregistrer', { sm: true, kind: 'secondary', onClick: () => busy(saveOption, async () => {
+        await api.saveSaleOption(o.id, label.value, price.value, active.checked); toast('Option mise à jour.', 'ok'); await loadOptions();
+      }) });
+      return h('div', { class: 'form-grid', style: { alignItems: 'end' } }, field('Option', label), field('Prix (€)', price), h('label', { class: 'check' }, active, h('span', {}, 'Disponible')), saveOption);
+    }) : [empty('Aucune option', 'Ajoutez des prestations facultatives pour l’achat d’un véhicule.')]);
+  }
+  const options = h('section', { class: 'card card-pad stack' }, h('h2', { class: 'card-title' }, 'Options à l’achat'),
+    h('p', { class: 'muted' }, 'Les acheteurs peuvent cocher plusieurs options depuis la conversation. Leur montant est ajouté au prix du véhicule.'),
+    h('div', { class: 'form-grid' }, field('Nom de l’option', optionName), field('Prix (€)', optionPrice), addOption), optionRows);
+  const el = adminLayout('pricing', pageHead('Tarifs', 'Ces valeurs servent à calculer automatiquement le montant de chaque véhicule.'), h('div', { class: 'stack-lg' }, form, options,
     h('section', { class: 'card card-pad stack' }, h('h2', { class: 'card-title' }, 'Aperçu du montant total'), prev),
     p.updated_by_name ? h('p', { class: 'muted small' }, `Dernière modification par ${p.updated_by_name}, ${dt(p.updated_at)}.`) : null));
+  await loadOptions();
+  return el;
 }
 
 /* ---------------- Historique ---------------- */
@@ -38,7 +61,7 @@ export async function history() {
   function paint() {
     const pre = group ? group.split(',') : [];
     const list = rows.filter((l) => (!pre.length || pre.some((x) => l.action.startsWith(x))) && (!term || (l.summary + l.actor_name).toLowerCase().includes(term)));
-    box.replaceChildren(list.length ? h('section', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'table stack' }, h('thead', {}, h('tr', {}, ['Date', 'Qui', 'Action', ''].map((t) => h('th', {}, t)))),
+    box.replaceChildren(list.length ? h('section', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'table stackable' }, h('thead', {}, h('tr', {}, ['Date', 'Qui', 'Action', ''].map((t) => h('th', {}, t)))),
       h('tbody', {}, list.map((l) => h('tr', {}, h('td', { 'data-label': 'Date', class: 'nowrap' }, dt(l.created_at)), h('td', { 'data-label': 'Qui' }, l.actor_name), h('td', { 'data-label': 'Action' }, l.summary),
         h('td', { class: 'actions', 'data-label': '' }, l.vehicle_id && !l.action.endsWith('delete') ? h('a', { class: 'btn ghost sm', href: '#/admin/vehicules/' + l.vehicle_id }, 'Fiche') : null))))))) : empty('Aucune action', 'Rien ne correspond à ce filtre.'),
       more ? h('div', { class: 'center', style: { marginTop: '14px' } }, moreBtn) : null);

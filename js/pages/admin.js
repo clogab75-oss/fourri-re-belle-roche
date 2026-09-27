@@ -74,11 +74,11 @@ export async function statsPage() {
   const dayBox = h('div', { class: 'chart-box' }); const stBox = h('div', { class: 'chart-box' }); const staffBox = h('div', { class: 'chart-box' });
   const rows = [['Véhicules entrés (archivés inclus)', t.entered], ['Actuellement en fourrière', t.in_impound], ['Actuellement réclamés', t.claimed_now], ['Véhicules ayant reçu une demande', t.claimed_vehicles],
     ['Demandes de récupération (total)', t.claims], ['Véhicules récupérés', t.recovered], ['Passés automatiquement en attente de vente', t.auto_flagged], ['En attente de mise en vente', t.awaiting_sale],
-    ['À vendre', t.for_sale], ['Vendus', t.sold], ['Archivés', t.archived], ['Conversations (total)', t.conversations], ['Conversations ouvertes', t.open_conversations], ['Marques d\'intérêt pour un achat', t.interests]];
+    ['À vendre', t.for_sale], ['Vendus', t.sold], ['Archivés', t.archived], ['Conversations (total)', t.conversations], ['Conversations ouvertes', t.open_conversations], ['Marques d\'intérêt pour un achat', t.interests], ['Codes promo utilisés', t.discounts_used]];
   const m = s.money;
   const el = adminLayout('stats', pageHead('Statistiques', manager ? 'Chiffres réels de la fourrière, y compris les données financières.' : 'Chiffres réels de la fourrière. Les données financières sont réservées aux gérants.'),
     h('div', { class: 'stack-lg' }, cards(s, manager, false),
-      m ? h('div', { class: 'stat-grid' }, [['Frais de fourrière encaissés', m.fees_collected, 'amber'], ['Frais en cours (véhicules présents)', m.fees_pending, 'blue'], ['Montant total des ventes', m.sales_total, 'green'], ['Prix de vente moyen', m.sales_average, 'green'], ['Valeur des véhicules à vendre', m.for_sale_value, 'violet']]
+      m ? h('div', { class: 'stat-grid' }, [['Frais de fourrière encaissés', m.fees_collected, 'amber'], ['Frais en cours (véhicules présents)', m.fees_pending, 'blue'], ['Montant total des ventes', m.sales_total, 'green'], ['Prix de vente moyen', m.sales_average, 'green'], ['Valeur des véhicules à vendre', m.for_sale_value, 'violet'], ['Réductions accordées (codes promo)', m.discounts_total, 'amber']]
         .map(([l, n, tone]) => h('div', { class: `stat ${tone}` }, h('div', { class: 'n num' }, money(n)), h('div', { class: 'l' }, l)))) : null,
       h('div', { class: 'two-col' }, h('section', { class: 'card card-pad' }, h('h2', { class: 'card-title', style: { marginBottom: '10px' } }, '30 derniers jours'), dayBox),
         h('section', { class: 'card card-pad' }, h('h2', { class: 'card-title', style: { marginBottom: '10px' } }, 'Répartition par statut'), stBox)),

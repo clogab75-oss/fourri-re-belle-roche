@@ -183,13 +183,13 @@ table.table { width: 100%; border-collapse: collapse; }
 .thumb { width: 64px; height: 48px; border-radius: 8px; object-fit: cover; background: #dfe7ee; flex: none; }
 .table .actions { text-align: right; white-space: nowrap; }
 @media (max-width: 760px) {
-  table.table.stack thead { display: none; }
-  table.table.stack, table.table.stack tbody, table.table.stack tr, table.table.stack td { display: block; width: 100%; }
-  table.table.stack tr { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; padding: 6px 4px; background: #fff; }
-  table.table.stack td { border: 0; padding: 6px 12px; display: flex; justify-content: space-between; gap: 14px; text-align: right; align-items: center; }
-  table.table.stack td::before { content: attr(data-label); color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; text-align: left; flex: none; }
-  table.table.stack td.actions { justify-content: flex-end; }
-  table.table.stack td.actions::before, table.table.stack td[data-label=""]::before { display: none; }
+  table.table.stackable thead { display: none; }
+  table.table.stackable, table.table.stackable tbody, table.table.stackable tr, table.table.stackable td { display: block; width: 100%; }
+  table.table.stackable tr { border: 1px solid var(--line); border-radius: 12px; margin-bottom: 12px; padding: 6px 4px; background: #fff; }
+  table.table.stackable td { border: 0; padding: 6px 12px; display: flex; justify-content: space-between; gap: 14px; text-align: right; align-items: center; }
+  table.table.stackable td::before { content: attr(data-label); color: var(--muted); font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; font-weight: 700; text-align: left; flex: none; }
+  table.table.stackable td.actions { justify-content: flex-end; }
+  table.table.stackable td.actions::before, table.table.stackable td[data-label=""]::before { display: none; }
 }
 
 /* ---------- Espace personnel (admin) ---------- */
@@ -328,3 +328,14 @@ main#view:focus { outline: none; }
   .stat .n { font-size: 1.9rem; }
   .stat .l { font-size: .8rem; }
 }
+
+/* ---------- Codes promo ---------- */
+.promo { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--amber-100); border-bottom: 2px dashed var(--amber-600); color: #5f4400; font-size: .95rem; }
+.promo svg { width: 20px; height: 20px; flex: none; }
+.strike { color: var(--muted); text-decoration: line-through; }
+.code-input { text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+.code-chip { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-display); font-weight: 700; letter-spacing: .08em; font-size: 1.15rem; background: var(--amber-100); border: 1.5px dashed var(--amber-600); border-radius: 8px; padding: 2px 6px 2px 10px; color: #4a3500; }
+.code-chip .btn-icon { width: 28px; height: 28px; }
+.code-chip .btn-icon svg { width: 16px; height: 16px; }
+.pct-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+@media (max-width: 860px) { .thread-head { gap: 8px; } .promo { padding: 9px 12px; font-size: .9rem; } }

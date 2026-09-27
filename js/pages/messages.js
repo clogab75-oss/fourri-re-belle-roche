@@ -1,8 +1,8 @@
 /* Messagerie : un fil par demande, en temps réel (avec relève régulière si le temps réel est indisponible). */
-import { h, icon, badge, loading, empty, toast, busy, confirmDialog, btn, debounce } from '../lib/ui.js';
+import { h, icon, badge, loading, empty, toast, busy, confirmDialog, btn, debounce, openModal, field } from '../lib/ui.js';
 import * as api from '../lib/api.js';
 import { plateEl } from '../lib/cards.js';
-import { rel, dt, dayLabel, timeOnly, ROLE, norm } from '../lib/format.js';
+import { rel, dt, dayLabel, timeOnly, ROLE, norm, money } from '../lib/format.js';
 import { confirmRecovered, soldModal } from '../lib/actions.js';
 
 export default async function messagesPage(ctx) {
@@ -39,7 +39,7 @@ export default async function messagesPage(ctx) {
           h('div', { class: 'l1' }, h('span', { class: 'nm' }, staff ? c.client_name : label(c)), h('span', { class: 'tm' }, rel(c.last_message_at))),
           h('span', { class: 'pv' }, staff ? label(c) : (c.last_message_preview || '')),
           h('div', { class: 'l3' }, h('span', { class: `badge plain ${c.type === 'claim' ? '' : 'green'}` }, c.type === 'claim' ? 'Récupération' : 'Achat'),
-            c.status === 'fermee' ? h('span', { class: 'badge plain gray' }, 'Fermée') : null, n ? h('span', { class: 'count-pill' }, n) : null)));
+            c.status === 'fermee' ? h('span', { class: 'badge plain gray' }, 'Fermée') : null, c.status === 'ouverte' && c.discount_percent ? h('span', { class: 'badge plain amber' }, `−${c.discount_percent} %`) : null, n ? h('span', { class: 'count-pill' }, n) : null)));
     }) : [empty(convs.length ? 'Aucune conversation ici' : 'Aucune conversation', convs.length ? 'Changez de filtre.' : (staff ? 'Elles apparaîtront quand un client fera une demande.' : "Cliquez sur « C'est ma voiture » depuis la liste des véhicules pour contacter l'équipe."))]));
   }
 
@@ -48,6 +48,7 @@ export default async function messagesPage(ctx) {
   const ta = h('textarea', { class: 'input', rows: '1', maxlength: '2000', placeholder: 'Écrivez votre message…', 'aria-label': 'Votre message' });
   const sendBtn = h('button', { class: 'btn', type: 'button', 'aria-label': 'Envoyer' }, icon('send'), h('span', { class: 'hide-sm' }, 'Envoyer'));
   const head = h('div', { class: 'thread-head' });
+  const promo = h('div', {});
   const foot = h('div', {});
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; };
   ta.addEventListener('input', grow);
@@ -55,12 +56,48 @@ export default async function messagesPage(ctx) {
   sendBtn.addEventListener('click', send);
   async function send() {
     const text = ta.value.trim(); if (!text || !conv || conv.status !== 'ouverte') return;
+    const cmd = /^\/code(?:\s+(.*))?$/i.exec(text);   // « /code MONCODE » : saisie d'un code promo directement dans le chat
+    if (cmd) {
+      ta.value = ''; grow();
+      if (cmd[1] && cmd[1].trim()) await busy(sendBtn, async () => { const r = await api.applyCode(conv.id, cmd[1]); if (r.ok) { toast(`Code appliqué : −${r.percent} %`, 'ok'); await refreshAll(true); } else toast(r.message, 'warn'); });
+      else openCodeModal();
+      return;
+    }
     await busy(sendBtn, async () => { await api.sendMessage(conv.id, text); ta.value = ''; grow(); await refreshThread(true); });
     ta.focus();
   }
+  function openCodeModal() {
+    const input = h('input', { class: 'input code-input', id: 'promo-code', type: 'text', maxlength: '40', autocomplete: 'off', autocapitalize: 'characters', spellcheck: 'false', placeholder: 'Ex. PROMO50' });
+    const err = h('div', { class: 'form-error', role: 'alert', hidden: true });
+    const go = btn('Appliquer le code', { onClick: () => busy(go, async () => {
+      err.hidden = true; const r = await api.applyCode(conv.id, input.value);
+      if (!r.ok) { err.textContent = r.message; err.hidden = false; input.focus(); return; }
+      toast(`Code appliqué : −${r.percent} %`, 'ok'); m.close(); await refreshAll(true);
+    }) });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go.click(); } });
+    const m = openModal({ title: 'Code promo', body: h('div', { class: 'stack' },
+      h('p', { class: 'muted' }, conv.type === 'claim' ? 'Saisissez le code pour réduire le montant à régler afin de récupérer le véhicule.' : "Saisissez le code pour réduire le prix d'achat du véhicule."),
+      field('Code', input, 'Astuce : vous pouvez aussi taper /code SONCODE dans la conversation.'), err),
+      actions: [btn('Annuler', { kind: 'secondary', onClick: () => m.close() }), go] });
+  }
 
+  function paintPromo() {
+    if (!conv.discount_code) { promo.className = ''; promo.replaceChildren(); return; }
+    const v = vOf(conv); const pct = conv.discount_percent; promo.className = 'promo';
+    let amounts = null;
+    if (conv.status === 'ouverte' && v) {
+      const base = Number(conv.type === 'claim' ? v.current_amount : v.sale_price);
+      if (base) amounts = [conv.type === 'claim' ? ' · montant actuel ' : ' · prix ', h('s', { class: 'strike' }, money(base)), ' → ', h('strong', {}, money(Math.round(base * (100 - pct) / 100)))];
+    }
+    promo.replaceChildren(icon('ticket'), h('div', { class: 'grow' }, h('strong', {}, `Code ${conv.discount_code}`), ` : −${pct} %`, amounts, conv.status === 'fermee' ? ' · utilisé pour cette transaction' : null),
+      manager && conv.status === 'ouverte' ? btn('Retirer', { sm: true, kind: 'ghost', onClick: async () => {
+        if (await confirmDialog({ title: 'Retirer le code promo ?', message: 'La réduction ne s\'appliquera plus. Le code redevient disponible.', confirmLabel: 'Retirer' })) {
+          try { await api.removeDiscount(conv.id); toast('Code retiré.', 'ok'); await refreshAll(true); } catch (e) { toast(e.message, 'error'); } } } }) : null);
+  }
   function paintHead() {
     const v = vOf(conv);
+    const canCode = conv.status === 'ouverte' && !conv.discount_redemption_id && v && (conv.type === 'claim' ? ['en_fourriere', 'reclamee'].includes(v.status) : v.status === 'a_vendre');
+    ta.placeholder = canCode ? 'Écrivez votre message… (astuce : /code VOTRECODE)' : 'Écrivez votre message…';
     head.replaceChildren(
       h('button', { class: 'btn-icon back', type: 'button', 'aria-label': 'Retour à la liste', onClick: () => select(null) }, icon('left')),
       v && v.photos && v.photos[0] ? h('img', { class: 'thumb', src: api.photoUrl(v.photos[0].path), alt: '' }) : null,
@@ -70,8 +107,9 @@ export default async function messagesPage(ctx) {
         h('div', { class: 'small muted' }, `${conv.type === 'claim' ? 'Demande de récupération' : 'Intérêt pour l\'achat'}${staff ? ' · ' + conv.client_name : ''} · ouverte ${rel(conv.created_at)}`)),
       h('div', { class: 'row', style: { gap: '6px' } },
         staff && v ? h('a', { class: 'btn secondary sm', href: '#/admin/vehicules/' + conv.vehicle_id }, 'Fiche') : null,
-        conv.status === 'ouverte' && staff && conv.type === 'claim' && v && v.status === 'reclamee' ? btn('Récupéré', { sm: true, ic: 'check', onClick: async () => { if (await confirmRecovered(v, conv.claim_id, conv.client_name)) await refreshAll(); } }) : null,
-        conv.status === 'ouverte' && manager && conv.type === 'vente' && v && v.status === 'a_vendre' ? btn('Vendu', { sm: true, ic: 'check', onClick: () => soldModal(v, [conv], refreshAll) }) : null,
+        conv.status === 'ouverte' && staff && conv.type === 'claim' && v && v.status === 'reclamee' ? btn('Récupéré', { sm: true, ic: 'check', onClick: async () => { if (await confirmRecovered(v, conv.claim_id, conv.client_name, conv.discount_percent)) await refreshAll(); } }) : null,
+        conv.status === 'ouverte' && manager && conv.type === 'vente' && v && v.status === 'a_vendre' ? btn('Acheter maintenant', { sm: true, ic: 'check', onClick: () => soldModal(v, [conv], refreshAll) }) : null,
+        canCode ? btn('Code promo', { sm: true, kind: 'secondary', ic: 'ticket', onClick: openCodeModal }) : null,
         conv.status === 'ouverte' ? btn('Fermer', { sm: true, kind: 'secondary', onClick: async () => {
           if (await confirmDialog({ title: 'Fermer la conversation ?', message: 'Elle sera conservée et consultable, mais plus personne ne pourra écrire.', confirmLabel: 'Fermer' })) {
             try { await api.closeConversation(conv.id); toast('Conversation fermée.', 'ok'); await refreshAll(); } catch (e) { toast(e.message, 'error'); }
@@ -109,8 +147,8 @@ export default async function messagesPage(ctx) {
     if (!conv) { thread.replaceChildren(h('div', { class: 'chat-empty' }, h('div', {}, h('h3', {}, 'Conversation introuvable'), h('p', { class: 'muted' }, 'Elle a peut-être été supprimée.')))); return; }
     if (!vmap.has(conv.vehicle_id)) (await api.vehiclesByIds([conv.vehicle_id])).forEach((v) => vmap.set(v.id, v));
     msgs = await api.messages(selected);
-    if (!thread.contains(msgsBox)) { thread.replaceChildren(head, msgsBox, foot); lastSig = ''; firstPaint = true; }
-    paintHead(); paintMsgs(force);
+    if (!thread.contains(msgsBox)) { thread.replaceChildren(head, promo, msgsBox, foot); lastSig = ''; firstPaint = true; }
+    paintHead(); paintPromo(); paintMsgs(force);
     if (msgs.some((m) => m.sender_id !== me.id && m.kind === 'text')) markReadSoon();
   }
   function select(id) {
