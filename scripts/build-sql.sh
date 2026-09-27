@@ -1,5 +1,5 @@
 #!/bin/sh
-# Assemble les parties SQL 01 à 08 en un seul fichier : supabase/install_all.sql
+# Assemble les scripts SQL 01 à 06 en un seul fichier : supabase/install_all.sql
 cd "$(dirname "$0")/../supabase" || exit 1
 {
   echo "-- ====================================================================="
@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../supabase" || exit 1
   echo "--  (Contenu = les fichiers du dossier parts/ mis bout à bout.)"
   echo "-- ====================================================================="
   echo
-  for f in 01_tables 02_functions_core 03_functions_app 04_promo_codes 05_discord 06_security 07_storage_realtime 08_sales_seizures; do
+  for f in 01_tables 02_functions_core 03_functions_app 04_promo_codes 05_discord 06_security 07_storage_realtime; do
     echo "-- >>>>>>>>>> parts/$f.sql"
     cat "parts/$f.sql"
     echo

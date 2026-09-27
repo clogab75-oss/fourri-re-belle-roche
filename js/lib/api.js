@@ -17,7 +17,6 @@ export const isLogged = () => !!(state.session && state.profile);
 export const isStaff = () => ['employe', 'gerant', 'admin'].includes(role());
 export const isManager = () => ['gerant', 'admin'].includes(role());
 export const isAdmin = () => role() === 'admin';
-export const isLawEnforcement = () => ['police', 'gendarmerie'].includes(role());
 
 /* ---------- Appels ---------- */
 function friendly(m) {
@@ -113,21 +112,10 @@ export const unarchive = (id) => rpc('unarchive_vehicle', { p_vehicle_id: id });
 export const listForSale = (id, price, description, paths) => rpc('list_vehicle_for_sale', { p_vehicle_id: id, p_price: price, p_description: description, p_new_photo_paths: paths || [] });
 export const updateSale = (id, price, description) => rpc('update_sale', { p_vehicle_id: id, p_price: price, p_description: description });
 export const withdrawSale = (id) => rpc('withdraw_sale', { p_vehicle_id: id });
-export const markSold = (id, convId, price, buyer, optionIds = []) => rpc('mark_vehicle_sold', { p_vehicle_id: id, p_conversation_id: convId || null, p_sold_price: price ?? null, p_buyer_name: buyer || null, p_option_ids: optionIds });
+export const markSold = (id, convId, price, buyer) => rpc('mark_vehicle_sold', { p_vehicle_id: id, p_conversation_id: convId || null, p_sold_price: price ?? null, p_buyer_name: buyer || null });
 export const stats = () => rpc('get_stats');
 export const logs = (limit = 100, offset = 0) => q(sb.from('activity_logs').select('*').order('created_at', { ascending: false }).range(offset, offset + limit - 1));
 export const updatePricing = (a) => rpc('update_pricing', { p_handling_fee: a.fee, p_daily_rate: a.rate, p_auto_sale_days: a.days, p_employee_delete_minutes: a.minutes, p_apply_to_current: !!a.apply });
-export const saleQueue = () => rpc('sale_queue');
-export const saveSaleDraft = (id, price, description) => rpc('save_sale_draft', { p_vehicle_id: id, p_price: price == null ? null : Number(price), p_description: description || null });
-export const forceSaleReady = (id) => rpc('force_sale_ready', { p_vehicle_id: id });
-export const saleOptions = () => rpc('list_sale_options');
-export const saveSaleOption = (id, label, price, active) => rpc('save_sale_option', { p_id: id || null, p_label: label, p_price: Number(price), p_active: active });
-
-/* ---------- Saisies (forces de l'ordre) ---------- */
-export const seizures = () => rpc('list_seizures');
-export const createSeizure = (seizure) => rpc('create_seizure', { p_plate: seizure.plate, p_color: seizure.color, p_model: seizure.model, p_requested_by: seizure.requestedBy });
-export const recoverSeizure = (id) => rpc('recover_seizure', { p_id: id });
-export const seizureStats = () => rpc('seizure_stats');
 
 /* ---------- Personnel ---------- */
 export async function staffMembers() {

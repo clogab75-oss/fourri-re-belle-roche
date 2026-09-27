@@ -38,7 +38,7 @@ export default async function staffPage() {
         return h('tr', {}, h('td', { 'data-label': 'Nom' }, h('strong', {}, p.nom)), h('td', { 'data-label': 'Prénom' }, p.prenom), h('td', { 'data-label': 'Rôle' }, roleBadge(r.role)),
           h('td', { 'data-label': 'Arrivée' }, dateOnly(r.hired_at)), h('td', { 'data-label': 'Statut' }, h('span', { class: 'badge green' }, 'Actif')), h('td', { 'data-label': 'Dernière connexion' }, p.last_seen_at ? rel(p.last_seen_at) : 'Jamais'),
           h('td', { class: 'actions', 'data-label': '' }, manager && !isMain && !self ? h('div', { class: 'row', style: { justifyContent: 'flex-end', gap: '6px' } },
-            admin ? h('select', { class: 'input', style: { width: 'auto', minHeight: '34px', padding: '4px 30px 4px 10px' }, 'aria-label': `Rôle de ${p.prenom} ${p.nom}`, onChange: (e) => setRole(r, e.target.value) }, ['employe', 'gerant', 'police', 'gendarmerie'].map((x) => h('option', { value: x, selected: x === r.role }, ROLE[x]))) : null,
+            admin ? h('select', { class: 'input', style: { width: 'auto', minHeight: '34px', padding: '4px 30px 4px 10px' }, 'aria-label': `Rôle de ${p.prenom} ${p.nom}`, onChange: (e) => setRole(r, e.target.value) }, ['employe', 'gerant'].map((x) => h('option', { value: x, selected: x === r.role }, ROLE[x]))) : null,
             btn('Mot de passe', { sm: true, kind: 'secondary', ic: 'key', onClick: () => reset(r) }), btn('Virer', { sm: true, kind: 'danger', onClick: () => fire(r) })) : (isMain ? h('span', { class: 'small muted' }, 'Compte protégé') : null))); })))));
     const past = former.length ? h('section', { class: 'stack' }, h('h2', {}, `Anciens membres (${former.length})`), h('section', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'table stackable' },
       h('thead', {}, h('tr', {}, ['Nom', 'Rôle', 'Arrivée', 'Départ', 'Par', 'Motif'].map((t) => h('th', {}, t)))),
@@ -55,7 +55,7 @@ export default async function staffPage() {
     function formNew() {
       const nom = h('input', { class: 'input', id: 'n-nom', maxlength: '40', autocomplete: 'off' }); const prenom = h('input', { class: 'input', id: 'n-prenom', maxlength: '40', autocomplete: 'off' });
       const pw = h('input', { class: 'input', id: 'n-pw', type: 'text', autocomplete: 'off', value: randomPassword(), maxlength: '72' });
-      const role = h('select', { class: 'input', id: 'n-role' }, h('option', { value: 'employe' }, 'Employé'), h('option', { value: 'gerant' }, 'Gérant'), h('option', { value: 'police' }, 'Police'), h('option', { value: 'gendarmerie' }, 'Gendarmerie'));
+      const role = h('select', { class: 'input', id: 'n-role' }, h('option', { value: 'employe' }, 'Employé'), h('option', { value: 'gerant' }, 'Gérant'));
       const go = btn('Créer le compte', { onClick: () => busy(go, async () => {
         const r = await api.staffCreate(nom.value.trim(), prenom.value.trim(), pw.value, role.value); m.close(); reload();
         credentialsModal('Compte créé', [`${prenom.value.trim()} ${nom.value.trim()} — ${ROLE[role.value]}`, `Mot de passe : ${pw.value}`], r.recovery_code); }) });

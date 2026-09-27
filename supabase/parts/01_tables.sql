@@ -49,7 +49,7 @@ create table if not exists public.profiles (
   nom_key       text not null,
   prenom_key    text not null,
   role          text not null default 'client'
-                check (role in ('client', 'employe', 'gerant', 'admin', 'police', 'gendarmerie')),
+                check (role in ('client', 'employe', 'gerant', 'admin')),
   is_main_admin boolean not null default false,
   phone_rp      text,
   created_at    timestamptz not null default now(),
@@ -79,13 +79,6 @@ create table if not exists public.staff (
 );
 create unique index if not exists staff_one_active_per_user
   on public.staff (user_id) where status = 'actif';
-
-alter table public.profiles drop constraint if exists profiles_role_check;
-alter table public.profiles add constraint profiles_role_check
-  check (role in ('client', 'employe', 'gerant', 'admin', 'police', 'gendarmerie'));
-alter table public.staff drop constraint if exists staff_role_check;
-alter table public.staff add constraint staff_role_check
-  check (role in ('employe', 'gerant', 'admin', 'police', 'gendarmerie'));
 
 -- ---------------------------------------------------------------------
 --  Tarifs et paramètres (une seule ligne)
@@ -170,30 +163,11 @@ create table if not exists public.vehicle_sales (
   buyer_name     text,
   sold_by        uuid references public.profiles (id) on delete set null,
   sold_by_name   text,
-  selected_options jsonb not null default '[]'::jsonb,
   withdrawn_at   timestamptz
 );
-alter table public.vehicle_sales add column if not exists selected_options jsonb not null default '[]'::jsonb;
 create unique index if not exists vehicle_sales_one_active
   on public.vehicle_sales (vehicle_id) where status = 'a_vendre';
 create index if not exists vehicle_sales_status_idx on public.vehicle_sales (status);
-
-create table if not exists public.sale_options (
-  id         uuid primary key default gen_random_uuid(),
-  label      text not null check (char_length(btrim(label)) between 2 and 80),
-  price      numeric(12, 2) not null check (price >= 0),
-  active     boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table if not exists public.vehicle_sale_drafts (
-  vehicle_id uuid primary key references public.vehicles (id) on delete cascade,
-  price      numeric(12, 2) check (price is null or price > 0),
-  description text,
-  updated_at timestamptz not null default now(),
-  updated_by uuid references public.profiles (id) on delete set null
-);
 
 -- ---------------------------------------------------------------------
 --  Claims (demandes de récupération) : plusieurs par véhicule possibles

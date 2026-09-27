@@ -128,7 +128,7 @@ select
   s.id as sale_id, s.status as sale_status, s.price as sale_price, s.description as sale_description,
   s.listed_at as sale_listed_at, s.sold_at, s.sold_price, s.buyer_name,
   v.discount_code, v.discount_percent, v.original_amount,
-  s.discount_code as sale_discount_code, s.discount_percent as sale_discount_percent, s.selected_options
+  s.discount_code as sale_discount_code, s.discount_percent as sale_discount_percent
 from public.vehicles v
 left join lateral (select * from public.vehicle_sales x where x.vehicle_id = v.id
                     order by x.listed_at desc limit 1) s on true;

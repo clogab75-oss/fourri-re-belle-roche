@@ -28,14 +28,6 @@ Site web complet pour une fourrière : les visiteurs retrouvent leur véhicule e
 
 **Automatique** : à **7 jours** (modifiable) sans réclamation active, un véhicule passe en « En attente de mise en vente », visible **uniquement des gérants et de l'administrateur**.
 
-**Options d'achat** : les gérants les définissent dans *Espace personnel → Tarifs* (ex. plein rempli, moteur réparé). Depuis une conversation d'achat, **Acheter maintenant** ouvre la sélection des options ; leurs prix sont ajoutés par la base au prix de la voiture et conservés dans l'historique.
-
-**Préparation des annonces** : chaque nouveau véhicule apparaît immédiatement dans *Espace personnel → Ventes*. Le gérant peut y saisir prix et description à l'avance. Une annonce renseignée est publiée automatiquement au délai configuré ; sans prix, le véhicule reste dans la file jusqu'à sa mise en vente. **Mettre en vente maintenant** recale la date d'entrée au délai automatique et déclenche le traitement tout de suite. Une réclamation ouverte bloque cette action.
-
-**Saisies** : depuis *Personnel*, créez un compte au rôle Police ou Gendarmerie. Ces comptes disposent uniquement du registre des saisies (plaque, modèle, couleur, service demandeur, récupération) et de statistiques dédiées, séparées des statistiques de la fourrière.
-
-Les codes promo peuvent être limités à **l'achat d'une voiture uniquement** : par exemple, un code de −20 % appliqué dans la conversation réduit un prix de 100 000 € à 80 000 €. Les options facultatives restent en supplément.
-
 ### Qui peut faire quoi
 
 | Action | Client | Employé | Gérant | Admin |
@@ -55,8 +47,6 @@ Les codes promo peuvent être limités à **l'achat d'une voiture uniquement** :
 | Retirer un code promo d'une conversation | | | ✅ | ✅ |
 | Statistiques de base | | ✅ | ✅ | ✅ |
 | Statistiques financières, historique, Discord | | | ✅ | ✅ |
-
-Les rôles **Police** et **Gendarmerie** sont créés depuis *Personnel*. Ils ne voient ni les véhicules, ni les conversations clients, ni les statistiques classiques ; leurs droits se limitent aux saisies et à leurs statistiques dédiées.
 
 Ces droits sont **vérifiés dans la base de données** (fonctions SQL + règles RLS), jamais seulement dans le navigateur.
 
@@ -206,7 +196,7 @@ supabase/
   install_all.sql        ← À coller dans le SQL Editor (étape 1)
   create_admin.sql       Création de Gabin Muller (étape 2)
   cron_recommended.sql   Tâche automatique (étape 3)
-  parts/                 Les parties SQL qui composent install_all.sql (lecture / maintenance)
+  parts/                 Les 7 fichiers qui composent install_all.sql (lecture / maintenance)
 scripts/build-sql.sh     Régénère install_all.sql à partir de parts/
 .env.example             Rappel des valeurs et de leur niveau de confidentialité
 ```

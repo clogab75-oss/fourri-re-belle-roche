@@ -108,7 +108,7 @@ export default async function messagesPage(ctx) {
       h('div', { class: 'row', style: { gap: '6px' } },
         staff && v ? h('a', { class: 'btn secondary sm', href: '#/admin/vehicules/' + conv.vehicle_id }, 'Fiche') : null,
         conv.status === 'ouverte' && staff && conv.type === 'claim' && v && v.status === 'reclamee' ? btn('Récupéré', { sm: true, ic: 'check', onClick: async () => { if (await confirmRecovered(v, conv.claim_id, conv.client_name, conv.discount_percent)) await refreshAll(); } }) : null,
-        conv.status === 'ouverte' && manager && conv.type === 'vente' && v && v.status === 'a_vendre' ? btn('Acheter maintenant', { sm: true, ic: 'check', onClick: () => soldModal(v, [conv], refreshAll) }) : null,
+        conv.status === 'ouverte' && manager && conv.type === 'vente' && v && v.status === 'a_vendre' ? btn('Vendu', { sm: true, ic: 'check', onClick: () => soldModal(v, [conv], refreshAll) }) : null,
         canCode ? btn('Code promo', { sm: true, kind: 'secondary', ic: 'ticket', onClick: openCodeModal }) : null,
         conv.status === 'ouverte' ? btn('Fermer', { sm: true, kind: 'secondary', onClick: async () => {
           if (await confirmDialog({ title: 'Fermer la conversation ?', message: 'Elle sera conservée et consultable, mais plus personne ne pourra écrire.', confirmLabel: 'Fermer' })) {

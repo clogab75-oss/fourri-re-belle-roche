@@ -587,8 +587,8 @@ declare
   v_prenom text := btrim(coalesce(p_prenom, ''));
   v_nk text; v_pk text; v_id uuid; v_code text;
 begin
-  if p_role not in ('employe', 'gerant', 'police', 'gendarmerie') then
-    raise exception 'Rôle invalide.';
+  if p_role not in ('employe', 'gerant') then
+    raise exception 'Le rôle doit être « employé » ou « gérant ».';
   end if;
   perform private.check_identity(v_nom, v_prenom);
   perform private.check_password(p_password);
@@ -611,11 +611,11 @@ begin
   v_code := private.issue_recovery_code(v_id);
   perform private.log_action('staff.create', 'staff', v_id, null,
     format('%s a créé le compte %s de %s %s', private.display_name(v_uid),
-           case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end,
+           case p_role when 'gerant' then 'gérant' else 'employé' end,
            initcap(lower(v_prenom)), initcap(lower(v_nom))),
     jsonb_build_object('role', p_role));
   perform private.notify_user(v_id, 'staff', 'Bienvenue dans l''équipe',
-    'Votre compte ' || case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end || ' a été créé.', '#/admin/saisies');
+    'Votre compte ' || case p_role when 'gerant' then 'gérant' else 'employé' end || ' a été créé.', '#/admin');
   return jsonb_build_object('id', v_id, 'recovery_code', v_code);
 end $$;
 
@@ -624,7 +624,7 @@ create or replace function public.staff_recruit_existing(p_user_id uuid, p_role 
 language plpgsql security definer set search_path = public, private as $$
 declare v_uid uuid := private.require_manager(); v_t public.profiles;
 begin
-  if p_role not in ('employe', 'gerant', 'police', 'gendarmerie') then
+  if p_role not in ('employe', 'gerant') then
     raise exception 'Rôle invalide.';
   end if;
   if p_role = 'gerant' and not private.is_main_admin() then
@@ -640,10 +640,10 @@ begin
   values (p_user_id, p_role, v_uid, private.display_name(v_uid));
   perform private.log_action('staff.recruit', 'staff', p_user_id, null,
     format('%s a recruté %s %s comme %s', private.display_name(v_uid), v_t.prenom, v_t.nom,
-           case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end),
+           case p_role when 'gerant' then 'gérant' else 'employé' end),
     jsonb_build_object('role', p_role));
   perform private.notify_user(p_user_id, 'staff', 'Vous rejoignez l''équipe',
-    'Vous avez été recruté comme ' || case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end || '.', '#/admin/saisies');
+    'Vous avez été recruté comme ' || case p_role when 'gerant' then 'gérant' else 'employé' end || '.', '#/admin');
 end $$;
 
 create or replace function public.staff_fire(p_user_id uuid, p_reason text default null) returns void
@@ -658,7 +658,7 @@ begin
   if p_user_id = v_uid then
     raise exception 'Vous ne pouvez pas vous retirer vous-même du personnel.';
   end if;
-  if v_t.role not in ('employe', 'gerant', 'police', 'gendarmerie') then
+  if v_t.role not in ('employe', 'gerant') then
     raise exception 'Cette personne ne fait pas partie du personnel.';
   end if;
   update public.staff
@@ -668,7 +668,7 @@ begin
   update public.profiles set role = 'client' where id = p_user_id;
   perform private.log_action('staff.fire', 'staff', p_user_id, null,
     format('%s a viré %s %s (%s)', private.display_name(v_uid), v_t.prenom, v_t.nom,
-           case v_t.role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end),
+           case v_t.role when 'gerant' then 'gérant' else 'employé' end),
     jsonb_build_object('role', v_t.role, 'reason', v_reason));
   perform private.notify_user(p_user_id, 'staff', 'Fin de vos fonctions',
     'Vous ne faites plus partie du personnel de la fourrière.', '#/compte');
@@ -682,20 +682,20 @@ begin
   if not private.is_main_admin() then
     raise exception 'Seul l''administrateur peut promouvoir ou rétrograder un membre du personnel.' using errcode = '42501';
   end if;
-  if p_role not in ('employe', 'gerant', 'police', 'gendarmerie') then raise exception 'Rôle invalide.'; end if;
+  if p_role not in ('employe', 'gerant') then raise exception 'Rôle invalide.'; end if;
   select * into v_t from public.profiles where id = p_user_id for update;
   if not found then raise exception 'Compte introuvable.'; end if;
-  if v_t.is_main_admin or v_t.role not in ('employe', 'gerant', 'police', 'gendarmerie') then
+  if v_t.is_main_admin or v_t.role not in ('employe', 'gerant') then
     raise exception 'Ce membre du personnel ne peut pas changer de rôle.';
   end if;
   if v_t.role = p_role then return; end if;
   update public.profiles set role = p_role where id = p_user_id;
   update public.staff set role = p_role where user_id = p_user_id and status = 'actif';
   perform private.log_action('staff.role', 'staff', p_user_id, null,
-    format('%s est maintenant %s', v_t.prenom || ' ' || v_t.nom, case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end),
+    format('%s est maintenant %s', v_t.prenom || ' ' || v_t.nom, case p_role when 'gerant' then 'gérant' else 'employé' end),
     jsonb_build_object('from', v_t.role, 'to', p_role));
   perform private.notify_user(p_user_id, 'staff', 'Votre rôle a changé',
-    'Vous êtes maintenant ' || case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end || '.', '#/admin');
+    'Vous êtes maintenant ' || case p_role when 'gerant' then 'gérant' else 'employé' end || '.', '#/admin');
 end $$;
 
 -- Réinitialisation du mot de passe d'un client ou d'un employé (gérant), ou de n'importe qui (admin).

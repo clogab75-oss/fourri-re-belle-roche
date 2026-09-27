@@ -6,7 +6,7 @@ import { money, dt } from '../lib/format.js';
 
 const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const generate = () => 'PROMO-' + Array.from(crypto.getRandomValues(new Uint32Array(5)), (n) => ALPHA[n % ALPHA.length]).join('');
-const SCOPE = { tous: 'Fourrière et voitures', fourriere: 'Fourrière uniquement', vente: 'Achat de voiture uniquement' };
+const SCOPE = { tous: 'Fourrière et vente', fourriere: 'Fourrière uniquement', vente: 'Vente uniquement' };
 const STATE = { actif: ['Actif', 'green'], desactive: ['Désactivé', 'gray'], expire: ['Expiré', 'red'], epuise: ['Épuisé', 'amber'] };
 const RSTATE = { appliquee: ['En cours', 'amber'], utilisee: ['Utilisé', 'green'], annulee: ['Annulé', 'gray'] };
 
@@ -51,7 +51,7 @@ export default async function codesPage() {
     h('ol', { style: { margin: 0, paddingLeft: '20px', display: 'grid', gap: '6px' } }, [
       'Créez un code et donnez-le à un client (ou à un employé).',
       'Dans la conversation, la personne clique sur « Code promo » ou tape /code SONCODE.',
-      'La réduction s\'affiche dans le chat. Elle s\'applique au montant de fourrière ou au prix de la voiture quand le gérant confirme l\'achat.',
+      'La réduction s\'affiche dans le chat. Elle s\'applique automatiquement au montant à régler (fourrière) ou au prix (vente) quand le gérant clôture.',
       'Un gérant peut retirer un code non utilisé depuis la conversation.'].map((t) => h('li', {}, t))));
   const el = adminLayout('codes', pageHead('Codes promo', 'Des réductions en pourcentage, applicables à la fourrière et à la vente de véhicules.'), h('div', { class: 'stack-lg' }, form, tableBox, help));
 

@@ -56,7 +56,7 @@ create table if not exists public.profiles (
   nom_key       text not null,
   prenom_key    text not null,
   role          text not null default 'client'
-                check (role in ('client', 'employe', 'gerant', 'admin', 'police', 'gendarmerie')),
+                check (role in ('client', 'employe', 'gerant', 'admin')),
   is_main_admin boolean not null default false,
   phone_rp      text,
   created_at    timestamptz not null default now(),
@@ -86,13 +86,6 @@ create table if not exists public.staff (
 );
 create unique index if not exists staff_one_active_per_user
   on public.staff (user_id) where status = 'actif';
-
-alter table public.profiles drop constraint if exists profiles_role_check;
-alter table public.profiles add constraint profiles_role_check
-  check (role in ('client', 'employe', 'gerant', 'admin', 'police', 'gendarmerie'));
-alter table public.staff drop constraint if exists staff_role_check;
-alter table public.staff add constraint staff_role_check
-  check (role in ('employe', 'gerant', 'admin', 'police', 'gendarmerie'));
 
 -- ---------------------------------------------------------------------
 --  Tarifs et paramètres (une seule ligne)
@@ -177,30 +170,11 @@ create table if not exists public.vehicle_sales (
   buyer_name     text,
   sold_by        uuid references public.profiles (id) on delete set null,
   sold_by_name   text,
-  selected_options jsonb not null default '[]'::jsonb,
   withdrawn_at   timestamptz
 );
-alter table public.vehicle_sales add column if not exists selected_options jsonb not null default '[]'::jsonb;
 create unique index if not exists vehicle_sales_one_active
   on public.vehicle_sales (vehicle_id) where status = 'a_vendre';
 create index if not exists vehicle_sales_status_idx on public.vehicle_sales (status);
-
-create table if not exists public.sale_options (
-  id         uuid primary key default gen_random_uuid(),
-  label      text not null check (char_length(btrim(label)) between 2 and 80),
-  price      numeric(12, 2) not null check (price >= 0),
-  active     boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table if not exists public.vehicle_sale_drafts (
-  vehicle_id uuid primary key references public.vehicles (id) on delete cascade,
-  price      numeric(12, 2) check (price is null or price > 0),
-  description text,
-  updated_at timestamptz not null default now(),
-  updated_by uuid references public.profiles (id) on delete set null
-);
 
 -- ---------------------------------------------------------------------
 --  Claims (demandes de récupération) : plusieurs par véhicule possibles
@@ -965,8 +939,8 @@ declare
   v_prenom text := btrim(coalesce(p_prenom, ''));
   v_nk text; v_pk text; v_id uuid; v_code text;
 begin
-  if p_role not in ('employe', 'gerant', 'police', 'gendarmerie') then
-    raise exception 'Rôle invalide.';
+  if p_role not in ('employe', 'gerant') then
+    raise exception 'Le rôle doit être « employé » ou « gérant ».';
   end if;
   perform private.check_identity(v_nom, v_prenom);
   perform private.check_password(p_password);
@@ -989,11 +963,11 @@ begin
   v_code := private.issue_recovery_code(v_id);
   perform private.log_action('staff.create', 'staff', v_id, null,
     format('%s a créé le compte %s de %s %s', private.display_name(v_uid),
-           case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end,
+           case p_role when 'gerant' then 'gérant' else 'employé' end,
            initcap(lower(v_prenom)), initcap(lower(v_nom))),
     jsonb_build_object('role', p_role));
   perform private.notify_user(v_id, 'staff', 'Bienvenue dans l''équipe',
-    'Votre compte ' || case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end || ' a été créé.', '#/admin/saisies');
+    'Votre compte ' || case p_role when 'gerant' then 'gérant' else 'employé' end || ' a été créé.', '#/admin');
   return jsonb_build_object('id', v_id, 'recovery_code', v_code);
 end $$;
 
@@ -1002,7 +976,7 @@ create or replace function public.staff_recruit_existing(p_user_id uuid, p_role 
 language plpgsql security definer set search_path = public, private as $$
 declare v_uid uuid := private.require_manager(); v_t public.profiles;
 begin
-  if p_role not in ('employe', 'gerant', 'police', 'gendarmerie') then
+  if p_role not in ('employe', 'gerant') then
     raise exception 'Rôle invalide.';
   end if;
   if p_role = 'gerant' and not private.is_main_admin() then
@@ -1018,10 +992,10 @@ begin
   values (p_user_id, p_role, v_uid, private.display_name(v_uid));
   perform private.log_action('staff.recruit', 'staff', p_user_id, null,
     format('%s a recruté %s %s comme %s', private.display_name(v_uid), v_t.prenom, v_t.nom,
-           case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end),
+           case p_role when 'gerant' then 'gérant' else 'employé' end),
     jsonb_build_object('role', p_role));
   perform private.notify_user(p_user_id, 'staff', 'Vous rejoignez l''équipe',
-    'Vous avez été recruté comme ' || case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end || '.', '#/admin/saisies');
+    'Vous avez été recruté comme ' || case p_role when 'gerant' then 'gérant' else 'employé' end || '.', '#/admin');
 end $$;
 
 create or replace function public.staff_fire(p_user_id uuid, p_reason text default null) returns void
@@ -1036,7 +1010,7 @@ begin
   if p_user_id = v_uid then
     raise exception 'Vous ne pouvez pas vous retirer vous-même du personnel.';
   end if;
-  if v_t.role not in ('employe', 'gerant', 'police', 'gendarmerie') then
+  if v_t.role not in ('employe', 'gerant') then
     raise exception 'Cette personne ne fait pas partie du personnel.';
   end if;
   update public.staff
@@ -1046,7 +1020,7 @@ begin
   update public.profiles set role = 'client' where id = p_user_id;
   perform private.log_action('staff.fire', 'staff', p_user_id, null,
     format('%s a viré %s %s (%s)', private.display_name(v_uid), v_t.prenom, v_t.nom,
-           case v_t.role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end),
+           case v_t.role when 'gerant' then 'gérant' else 'employé' end),
     jsonb_build_object('role', v_t.role, 'reason', v_reason));
   perform private.notify_user(p_user_id, 'staff', 'Fin de vos fonctions',
     'Vous ne faites plus partie du personnel de la fourrière.', '#/compte');
@@ -1060,20 +1034,20 @@ begin
   if not private.is_main_admin() then
     raise exception 'Seul l''administrateur peut promouvoir ou rétrograder un membre du personnel.' using errcode = '42501';
   end if;
-  if p_role not in ('employe', 'gerant', 'police', 'gendarmerie') then raise exception 'Rôle invalide.'; end if;
+  if p_role not in ('employe', 'gerant') then raise exception 'Rôle invalide.'; end if;
   select * into v_t from public.profiles where id = p_user_id for update;
   if not found then raise exception 'Compte introuvable.'; end if;
-  if v_t.is_main_admin or v_t.role not in ('employe', 'gerant', 'police', 'gendarmerie') then
+  if v_t.is_main_admin or v_t.role not in ('employe', 'gerant') then
     raise exception 'Ce membre du personnel ne peut pas changer de rôle.';
   end if;
   if v_t.role = p_role then return; end if;
   update public.profiles set role = p_role where id = p_user_id;
   update public.staff set role = p_role where user_id = p_user_id and status = 'actif';
   perform private.log_action('staff.role', 'staff', p_user_id, null,
-    format('%s est maintenant %s', v_t.prenom || ' ' || v_t.nom, case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end),
+    format('%s est maintenant %s', v_t.prenom || ' ' || v_t.nom, case p_role when 'gerant' then 'gérant' else 'employé' end),
     jsonb_build_object('from', v_t.role, 'to', p_role));
   perform private.notify_user(p_user_id, 'staff', 'Votre rôle a changé',
-    'Vous êtes maintenant ' || case p_role when 'gerant' then 'gérant' when 'police' then 'Police' when 'gendarmerie' then 'Gendarmerie' else 'employé' end || '.', '#/admin');
+    'Vous êtes maintenant ' || case p_role when 'gerant' then 'gérant' else 'employé' end || '.', '#/admin');
 end $$;
 
 -- Réinitialisation du mot de passe d'un client ou d'un employé (gérant), ou de n'importe qui (admin).
@@ -1449,7 +1423,6 @@ begin
   end if;
   insert into public.vehicle_sales (vehicle_id, price, description, listed_by, listed_by_name)
   values (p_vehicle_id, p_price, v_desc, v_uid, v_name);
-  delete from public.vehicle_sale_drafts where vehicle_id = p_vehicle_id;
   update public.vehicles set status = 'a_vendre', status_changed_at = now(),
          updated_by = v_uid, updated_by_name = v_name where id = p_vehicle_id;
   perform private.log_action('sale.list', 'vehicle', p_vehicle_id, p_vehicle_id,
@@ -1489,10 +1462,9 @@ begin
     format('%s a retiré le véhicule %s de la vente', private.display_name(v_uid), v_v.plate));
 end $$;
 
-drop function if exists public.mark_vehicle_sold(uuid, uuid, numeric, text);
 create or replace function public.mark_vehicle_sold(
   p_vehicle_id uuid, p_conversation_id uuid default null,
-  p_sold_price numeric default null, p_buyer_name text default null, p_option_ids uuid[] default '{}')
+  p_sold_price numeric default null, p_buyer_name text default null)
 returns void
 language plpgsql security definer set search_path = public, private as $$
 declare
@@ -1501,7 +1473,6 @@ declare
   v_v public.vehicles; v_s public.vehicle_sales; v_c public.conversations;
   v_buyer_id uuid; v_buyer text := nullif(btrim(coalesce(p_buyer_name, '')), ''); v_price numeric;
   v_pct integer; v_code text; v_red uuid; r record;
-  v_option_total numeric := 0; v_options jsonb := '[]'::jsonb; v_option_count integer; v_base_price numeric;
 begin
   select * into v_v from public.vehicles where id = p_vehicle_id for update;
   if not found or v_v.status <> 'a_vendre' then raise exception 'Ce véhicule n''est pas à vendre.'; end if;
@@ -1519,26 +1490,17 @@ begin
   elsif v_buyer is null then
     raise exception 'Indiquez l''acheteur.';
   end if;
-  select count(*) into v_option_count from public.sale_options
-   where id = any(coalesce(p_option_ids, '{}')) and active;
-  if v_option_count <> (select count(distinct x) from unnest(coalesce(p_option_ids, '{}')) as x) then
-    raise exception 'Une option sélectionnée est invalide ou désactivée.';
-  end if;
-  select coalesce(sum(price), 0), coalesce(jsonb_agg(jsonb_build_object('id', id, 'label', label, 'price', price) order by label), '[]'::jsonb)
-    into v_option_total, v_options
-    from public.sale_options where id = any(coalesce(p_option_ids, '{}')) and active;
   -- prix par défaut = prix de l'annonce, réduit du code promo de l'acheteur ; un gérant peut imposer un autre prix
-  v_base_price := coalesce(p_sold_price, case when v_pct is null then v_s.price else round(v_s.price * (100 - v_pct) / 100) end);
-  v_price := v_base_price + v_option_total;
+  v_price := coalesce(p_sold_price, case when v_pct is null then v_s.price else round(v_s.price * (100 - v_pct) / 100) end);
   if v_price < 0 or (v_price = 0 and coalesce(v_pct, 0) < 100) then raise exception 'Prix de vente invalide.'; end if;
   update public.vehicle_sales
      set status = 'vendue', sold_at = now(), sold_price = v_price, buyer_id = v_buyer_id,
          buyer_name = v_buyer, sold_by = v_uid, sold_by_name = v_name,
-         discount_code = v_code, discount_percent = v_pct, selected_options = v_options
+         discount_code = v_code, discount_percent = v_pct
    where id = v_s.id;
   if v_red is not null then
     update public.discount_redemptions
-      set status = 'utilisee', used_at = now(), original_amount = v_s.price, final_amount = v_base_price
+       set status = 'utilisee', used_at = now(), original_amount = v_s.price, final_amount = v_price
      where id = v_red;
   end if;
   update public.vehicles set status = 'vendue', status_changed_at = now(),
@@ -1557,7 +1519,7 @@ begin
   perform private.log_action('sale.sold', 'vehicle', p_vehicle_id, p_vehicle_id,
     format('%s a vendu le véhicule %s (%s) à %s pour %s%s', v_name, v_v.plate, v_v.model, v_buyer, private.fmt_money(v_price),
            case when v_pct is null then '' else format(' (code %s, −%s %%)', v_code, v_pct) end),
-    jsonb_build_object('price', v_price, 'buyer', v_buyer, 'original_price', v_s.price, 'discount_percent', v_pct, 'options', v_options));
+    jsonb_build_object('price', v_price, 'buyer', v_buyer, 'original_price', v_s.price, 'discount_percent', v_pct));
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -3040,7 +3002,7 @@ select
   s.id as sale_id, s.status as sale_status, s.price as sale_price, s.description as sale_description,
   s.listed_at as sale_listed_at, s.sold_at, s.sold_price, s.buyer_name,
   v.discount_code, v.discount_percent, v.original_amount,
-  s.discount_code as sale_discount_code, s.discount_percent as sale_discount_percent, s.selected_options
+  s.discount_code as sale_discount_code, s.discount_percent as sale_discount_percent
 from public.vehicles v
 left join lateral (select * from public.vehicle_sales x where x.vehicle_id = v.id
                     order by x.listed_at desc limit 1) s on true;
@@ -3136,198 +3098,5 @@ begin
   end loop;
 end $$;
 
--- >>>>>>>>>> parts/08_sales_seizures.sql
--- Options de vente, annonces preparees et saisies accessibles aux forces de l'ordre.
-
-create table if not exists public.seizures (
-  id uuid primary key default gen_random_uuid(),
-  plate text not null check (char_length(btrim(plate)) between 2 and 16),
-  color text not null check (char_length(btrim(color)) between 1 and 40),
-  model text not null check (char_length(btrim(model)) between 1 and 60),
-  requested_by text not null check (requested_by in ('police', 'gendarmerie')),
-  status text not null default 'active' check (status in ('active', 'recuperee')),
-  created_by uuid references public.profiles (id) on delete set null,
-  created_by_name text not null,
-  created_at timestamptz not null default now(),
-  recovered_by uuid references public.profiles (id) on delete set null,
-  recovered_by_name text,
-  recovered_at timestamptz
-);
-create index if not exists seizures_status_created_idx on public.seizures (status, created_at desc);
-alter table public.seizures enable row level security;
-alter table public.sale_options enable row level security;
-alter table public.vehicle_sale_drafts enable row level security;
-revoke all on public.seizures, public.sale_options, public.vehicle_sale_drafts from anon, authenticated;
-
-create or replace function private.is_law_enforcement() returns boolean
-language sql stable security definer set search_path = public as $$
-  select exists (select 1 from public.profiles where id = auth.uid() and role in ('police', 'gendarmerie'));
-$$;
-create or replace function private.require_law_enforcement() returns uuid
-language plpgsql set search_path = public, private as $$
-declare v_uid uuid := private.require_login();
-begin
-  if not private.is_law_enforcement() then raise exception 'Acces reserve aux forces de l''ordre.' using errcode = '42501'; end if;
-  return v_uid;
-end $$;
-
-insert into public.vehicle_sale_drafts (vehicle_id)
-select id from public.vehicles where status in ('en_fourriere', 'reclamee', 'attente_vente')
-on conflict (vehicle_id) do nothing;
-create or replace function private.ensure_sale_draft() returns trigger
-language plpgsql security definer set search_path = public as $$
-begin
-  insert into public.vehicle_sale_drafts (vehicle_id) values (new.id) on conflict (vehicle_id) do nothing;
-  return new;
-end $$;
-drop trigger if exists vehicle_sale_draft_insert on public.vehicles;
-create trigger vehicle_sale_draft_insert after insert on public.vehicles for each row execute function private.ensure_sale_draft();
-
-create or replace function private.publish_prepared_sale_for_vehicle(p_vehicle_id uuid) returns void
-language plpgsql security definer set search_path = public, private as $$
-declare v_d public.vehicle_sale_drafts; v_v public.vehicles;
-begin
-  select * into v_v from public.vehicles where id = p_vehicle_id for update;
-  if not found or v_v.status <> 'attente_vente' then return; end if;
-  select * into v_d from public.vehicle_sale_drafts where vehicle_id = p_vehicle_id for update;
-  if not found or v_d.price is null or char_length(btrim(coalesce(v_d.description, ''))) < 3 then return; end if;
-  insert into public.vehicle_sales (vehicle_id, price, description, listed_by, listed_by_name)
-  values (p_vehicle_id, v_d.price, v_d.description, v_d.updated_by, private.display_name(v_d.updated_by));
-  delete from public.vehicle_sale_drafts where vehicle_id = p_vehicle_id;
-  update public.vehicles set status = 'a_vendre', status_changed_at = now() where id = p_vehicle_id;
-  perform private.log_action('sale.auto_list', 'vehicle', p_vehicle_id, p_vehicle_id,
-    format('Le véhicule %s a été mis en vente automatiquement au prix de %s', v_v.plate, private.fmt_money(v_d.price)),
-    jsonb_build_object('price', v_d.price));
-end $$;
-
-create or replace function private.publish_prepared_sale() returns trigger
-language plpgsql security definer set search_path = public, private as $$
-begin
-  if new.status = 'attente_vente' and old.status <> 'attente_vente' then
-    perform private.publish_prepared_sale_for_vehicle(new.id);
-  end if;
-  return new;
-end $$;
-drop trigger if exists vehicle_publish_prepared_sale on public.vehicles;
-create trigger vehicle_publish_prepared_sale after update of status on public.vehicles for each row execute function private.publish_prepared_sale();
-
-create or replace function public.sale_queue()
-returns table (id uuid, plate text, model text, color text, status text, created_at timestamptz,
-  days_in_impound integer, current_amount numeric, prepared_price numeric, prepared_description text, photos jsonb)
-language plpgsql stable security definer set search_path = public, private as $$
-begin
-  perform private.require_manager();
-  return query select v.id, v.plate, v.model, v.color, v.status, v.created_at,
-    private.billing_days(v.created_at, v.billing_end_at),
-    coalesce(v.final_amount, private.billing_amount(v.handling_fee, v.daily_rate, v.created_at, v.billing_end_at)),
-    d.price, d.description,
-    coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'path', p.storage_path, 'position', p.position)
-      order by p.position, p.created_at) from public.vehicle_photos p where p.vehicle_id = v.id), '[]'::jsonb)
-    from public.vehicles v left join public.vehicle_sale_drafts d on d.vehicle_id = v.id
-    where v.status in ('en_fourriere', 'reclamee', 'attente_vente') order by v.created_at asc;
-end $$;
-
-create or replace function public.save_sale_draft(p_vehicle_id uuid, p_price numeric, p_description text) returns void
-language plpgsql security definer set search_path = public, private as $$
-declare v_uid uuid := private.require_manager(); v_v public.vehicles; v_desc text := btrim(coalesce(p_description, ''));
-begin
-  select * into v_v from public.vehicles where id = p_vehicle_id for update;
-  if not found or v_v.status not in ('en_fourriere', 'reclamee', 'attente_vente') then raise exception 'Ce véhicule ne peut pas être préparé pour la vente.'; end if;
-  if p_price is not null and (p_price <= 0 or p_price > 1000000000) then raise exception 'Prix de vente invalide.'; end if;
-  if p_price is not null and char_length(v_desc) < 3 then raise exception 'Ajoutez une description avant de préparer le prix.'; end if;
-  if char_length(v_desc) > 2000 then raise exception 'Description trop longue (2000 caractères maximum).'; end if;
-  insert into public.vehicle_sale_drafts (vehicle_id, price, description, updated_at, updated_by)
-  values (p_vehicle_id, p_price, case when p_price is null then null else v_desc end, now(), v_uid)
-  on conflict (vehicle_id) do update set price = excluded.price, description = excluded.description, updated_at = now(), updated_by = v_uid;
-  if v_v.status = 'attente_vente' and p_price is not null then perform private.publish_prepared_sale_for_vehicle(p_vehicle_id); end if;
-end $$;
-
-create or replace function public.force_sale_ready(p_vehicle_id uuid) returns void
-language plpgsql security definer set search_path = public, private as $$
-declare v_uid uuid := private.require_manager(); v_v public.vehicles; v_days integer;
-begin
-  select * into v_v from public.vehicles where id = p_vehicle_id for update;
-  if not found or v_v.status <> 'en_fourriere' then raise exception 'Seuls les véhicules non réclamés en fourrière peuvent être accélérés.'; end if;
-  if exists (select 1 from public.conversations where vehicle_id = p_vehicle_id and type = 'claim' and status = 'ouverte') then raise exception 'Ce véhicule a une demande de récupération ouverte.'; end if;
-  select auto_sale_days into v_days from public.pricing_settings where id = 1;
-  update public.vehicles set created_at = now() - make_interval(days => v_days), updated_by = v_uid, updated_by_name = private.display_name(v_uid) where id = p_vehicle_id;
-  update public.pricing_settings set last_auto_check_at = null where id = 1;
-  perform public.process_auto_sale();
-end $$;
-
-create or replace function public.list_sale_options()
-returns table (id uuid, label text, price numeric, active boolean)
-language plpgsql stable security definer set search_path = public, private as $$
-begin
-  perform private.require_login();
-  return query select o.id, o.label, o.price, o.active from public.sale_options o where o.active or private.is_manager() order by o.label;
-end $$;
-create or replace function public.save_sale_option(p_id uuid, p_label text, p_price numeric, p_active boolean default true) returns uuid
-language plpgsql security definer set search_path = public, private as $$
-declare v_uid uuid := private.require_manager(); v_id uuid := p_id; v_label text := btrim(coalesce(p_label, ''));
-begin
-  if char_length(v_label) not between 2 and 80 then raise exception 'Le nom de l''option doit contenir entre 2 et 80 caractères.'; end if;
-  if p_price is null or p_price < 0 or p_price > 100000000 then raise exception 'Prix d''option invalide.'; end if;
-  if p_id is null then
-    insert into public.sale_options (label, price, active) values (v_label, p_price, coalesce(p_active, true)) returning id into v_id;
-  else
-    update public.sale_options set label = v_label, price = p_price, active = coalesce(p_active, false), updated_at = now() where id = p_id;
-    if not found then raise exception 'Option introuvable.'; end if;
-  end if;
-  perform private.log_action('sale.option', 'sale_option', v_id, null, format('%s a modifié l''option %s (%s)', private.display_name(v_uid), v_label, private.fmt_money(p_price)));
-  return v_id;
-end $$;
-
-create or replace function public.create_seizure(p_plate text, p_color text, p_model text, p_requested_by text) returns uuid
-language plpgsql security definer set search_path = public, private as $$
-declare v_uid uuid := private.require_law_enforcement(); v_id uuid; v_name text := private.display_name(v_uid);
-begin
-  if char_length(btrim(coalesce(p_plate, ''))) not between 2 and 16 then raise exception 'Plaque invalide.'; end if;
-  if char_length(btrim(coalesce(p_color, ''))) not between 1 and 40 then raise exception 'Couleur invalide.'; end if;
-  if char_length(btrim(coalesce(p_model, ''))) not between 1 and 60 then raise exception 'Modèle invalide.'; end if;
-  if p_requested_by not in ('police', 'gendarmerie') then raise exception 'Service demandeur invalide.'; end if;
-  insert into public.seizures (plate, color, model, requested_by, created_by, created_by_name)
-  values (upper(btrim(p_plate)), btrim(p_color), btrim(p_model), p_requested_by, v_uid, v_name) returning id into v_id;
-  return v_id;
-end $$;
-create or replace function public.list_seizures()
-returns table (id uuid, plate text, color text, model text, requested_by text, status text,
-  created_by_name text, created_at timestamptz, recovered_by_name text, recovered_at timestamptz)
-language plpgsql stable security definer set search_path = public, private as $$
-begin
-  if not private.is_law_enforcement() and not private.is_manager() then raise exception 'Acces reserve aux forces de l''ordre et aux gerants.' using errcode = '42501'; end if;
-  return query select s.id, s.plate, s.color, s.model, s.requested_by, s.status, s.created_by_name, s.created_at, s.recovered_by_name, s.recovered_at
-    from public.seizures s order by (s.status = 'active') desc, s.created_at desc;
-end $$;
-create or replace function public.recover_seizure(p_id uuid) returns void
-language plpgsql security definer set search_path = public, private as $$
-declare v_uid uuid := private.require_law_enforcement();
-begin
-  update public.seizures set status = 'recuperee', recovered_at = now(), recovered_by = v_uid, recovered_by_name = private.display_name(v_uid)
-    where id = p_id and status = 'active';
-  if not found then raise exception 'Cette saisie est deja recuperee ou introuvable.'; end if;
-end $$;
-create or replace function public.seizure_stats() returns jsonb
-language plpgsql stable security definer set search_path = public, private as $$
-declare v_uid uuid := private.require_law_enforcement();
-begin
-  return jsonb_build_object('total', (select count(*) from public.seizures), 'active', (select count(*) from public.seizures where status = 'active'),
-    'recovered', (select count(*) from public.seizures where status = 'recuperee'), 'police', (select count(*) from public.seizures where requested_by = 'police'),
-    'gendarmerie', (select count(*) from public.seizures where requested_by = 'gendarmerie'), 'mine', (select count(*) from public.seizures where created_by = v_uid));
-end $$;
-
-revoke all on function private.is_law_enforcement() from public, anon, authenticated;
-revoke all on function private.require_law_enforcement() from public, anon, authenticated;
-revoke all on function private.ensure_sale_draft() from public, anon, authenticated;
-revoke all on function private.publish_prepared_sale() from public, anon, authenticated;
-revoke all on function private.publish_prepared_sale_for_vehicle(uuid) from public, anon, authenticated;
-do $$
-declare v_fn text;
-begin
-  foreach v_fn in array array['sale_queue', 'save_sale_draft', 'force_sale_ready', 'list_sale_options', 'save_sale_option', 'create_seizure', 'list_seizures', 'recover_seizure', 'seizure_stats'] loop
-    execute format('revoke all on function public.%I from public, anon, authenticated', v_fn);
-    execute format('grant execute on function public.%I to authenticated', v_fn);
-  end loop;
-end $$;
 -- Recharge le cache de l'API pour qu'elle voie les nouvelles fonctions
 notify pgrst, 'reload schema';

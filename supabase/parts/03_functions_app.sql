@@ -343,7 +343,6 @@ begin
   end if;
   insert into public.vehicle_sales (vehicle_id, price, description, listed_by, listed_by_name)
   values (p_vehicle_id, p_price, v_desc, v_uid, v_name);
-  delete from public.vehicle_sale_drafts where vehicle_id = p_vehicle_id;
   update public.vehicles set status = 'a_vendre', status_changed_at = now(),
          updated_by = v_uid, updated_by_name = v_name where id = p_vehicle_id;
   perform private.log_action('sale.list', 'vehicle', p_vehicle_id, p_vehicle_id,
@@ -383,10 +382,9 @@ begin
     format('%s a retiré le véhicule %s de la vente', private.display_name(v_uid), v_v.plate));
 end $$;
 
-drop function if exists public.mark_vehicle_sold(uuid, uuid, numeric, text);
 create or replace function public.mark_vehicle_sold(
   p_vehicle_id uuid, p_conversation_id uuid default null,
-  p_sold_price numeric default null, p_buyer_name text default null, p_option_ids uuid[] default '{}')
+  p_sold_price numeric default null, p_buyer_name text default null)
 returns void
 language plpgsql security definer set search_path = public, private as $$
 declare
@@ -395,7 +393,6 @@ declare
   v_v public.vehicles; v_s public.vehicle_sales; v_c public.conversations;
   v_buyer_id uuid; v_buyer text := nullif(btrim(coalesce(p_buyer_name, '')), ''); v_price numeric;
   v_pct integer; v_code text; v_red uuid; r record;
-  v_option_total numeric := 0; v_options jsonb := '[]'::jsonb; v_option_count integer; v_base_price numeric;
 begin
   select * into v_v from public.vehicles where id = p_vehicle_id for update;
   if not found or v_v.status <> 'a_vendre' then raise exception 'Ce véhicule n''est pas à vendre.'; end if;
@@ -413,26 +410,17 @@ begin
   elsif v_buyer is null then
     raise exception 'Indiquez l''acheteur.';
   end if;
-  select count(*) into v_option_count from public.sale_options
-   where id = any(coalesce(p_option_ids, '{}')) and active;
-  if v_option_count <> (select count(distinct x) from unnest(coalesce(p_option_ids, '{}')) as x) then
-    raise exception 'Une option sélectionnée est invalide ou désactivée.';
-  end if;
-  select coalesce(sum(price), 0), coalesce(jsonb_agg(jsonb_build_object('id', id, 'label', label, 'price', price) order by label), '[]'::jsonb)
-    into v_option_total, v_options
-    from public.sale_options where id = any(coalesce(p_option_ids, '{}')) and active;
   -- prix par défaut = prix de l'annonce, réduit du code promo de l'acheteur ; un gérant peut imposer un autre prix
-  v_base_price := coalesce(p_sold_price, case when v_pct is null then v_s.price else round(v_s.price * (100 - v_pct) / 100) end);
-  v_price := v_base_price + v_option_total;
+  v_price := coalesce(p_sold_price, case when v_pct is null then v_s.price else round(v_s.price * (100 - v_pct) / 100) end);
   if v_price < 0 or (v_price = 0 and coalesce(v_pct, 0) < 100) then raise exception 'Prix de vente invalide.'; end if;
   update public.vehicle_sales
      set status = 'vendue', sold_at = now(), sold_price = v_price, buyer_id = v_buyer_id,
          buyer_name = v_buyer, sold_by = v_uid, sold_by_name = v_name,
-         discount_code = v_code, discount_percent = v_pct, selected_options = v_options
+         discount_code = v_code, discount_percent = v_pct
    where id = v_s.id;
   if v_red is not null then
     update public.discount_redemptions
-      set status = 'utilisee', used_at = now(), original_amount = v_s.price, final_amount = v_base_price
+       set status = 'utilisee', used_at = now(), original_amount = v_s.price, final_amount = v_price
      where id = v_red;
   end if;
   update public.vehicles set status = 'vendue', status_changed_at = now(),
@@ -451,7 +439,7 @@ begin
   perform private.log_action('sale.sold', 'vehicle', p_vehicle_id, p_vehicle_id,
     format('%s a vendu le véhicule %s (%s) à %s pour %s%s', v_name, v_v.plate, v_v.model, v_buyer, private.fmt_money(v_price),
            case when v_pct is null then '' else format(' (code %s, −%s %%)', v_code, v_pct) end),
-    jsonb_build_object('price', v_price, 'buyer', v_buyer, 'original_price', v_s.price, 'discount_percent', v_pct, 'options', v_options));
+    jsonb_build_object('price', v_price, 'buyer', v_buyer, 'original_price', v_s.price, 'discount_percent', v_pct));
 end $$;
 
 -- ---------------------------------------------------------------------

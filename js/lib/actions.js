@@ -59,28 +59,17 @@ export function soldModal(v, saleConvs, onDone) {
   const nameF = field('Nom de l\'acheteur', name);
   const price = h('input', { class: 'input', id: 'sprice', type: 'number', min: '0', step: '1' });
   const hint = h('span', { class: 'hint' });
-  const optionsBox = h('div', { class: 'stack' }, h('span', { class: 'label' }, 'Options facultatives'), h('span', { class: 'muted small' }, 'Chargement…'));
-  let saleOptions = [];
-  const selectedOptionIds = () => [...optionsBox.querySelectorAll('input:checked')].map((i) => i.value);
   let touched = false; price.addEventListener('input', () => { touched = true; });
   const sync = () => {
     nameF.hidden = buyer.value !== '';
     const c = saleConvs.find((x) => x.id === buyer.value); const pct = c ? c.discount_percent : 0;
     if (!touched) price.value = String(reduced(v.sale_price, pct));
-    const extra = saleOptions.filter((o) => selectedOptionIds().includes(o.id)).reduce((sum, o) => sum + Number(o.price), 0);
-    hint.textContent = `${pct ? `Prix voiture : ${money(v.sale_price)} · code ${c.discount_code} (−${pct} %) : ${money(reduced(v.sale_price, pct))}. ` : `Prix voiture : ${money(v.sale_price)}. `}Options : +${money(extra)}. Le montant final inclut ces options.`;
+    hint.textContent = pct ? `Prix de l'annonce : ${money(v.sale_price)} · code ${c.discount_code} (−${pct} %) : ${money(reduced(v.sale_price, pct))}. Vous pouvez modifier le montant.` : `Prix de l'annonce : ${money(v.sale_price)}.`;
   };
   buyer.addEventListener('change', () => { touched = false; sync(); }); sync();
   const go = btn('Confirmer la vente', { onClick: () => busy(go, async () => {
-    await api.markSold(v.id, buyer.value || null, Number(price.value), buyer.value ? null : name.value, selectedOptionIds()); toast('Vente enregistrée.', 'ok'); m.close(); onDone();
+    await api.markSold(v.id, buyer.value || null, Number(price.value), buyer.value ? null : name.value); toast('Vente enregistrée.', 'ok'); m.close(); onDone();
   }) });
-  const m = openModal({ title: `Vendre · ${v.model}`, body: h('div', { class: 'stack' }, field('Acheteur', buyer, 'Les personnes ayant cliqué sur « Je suis intéressé » sont listées.'), nameF, field('Prix voiture (€)', price), optionsBox, hint),
+  const m = openModal({ title: `Vendre · ${v.model}`, body: h('div', { class: 'stack' }, field('Acheteur', buyer, 'Les personnes ayant cliqué sur « Je suis intéressé » sont listées.'), nameF, field('Prix final (€)', price), hint),
     actions: [btn('Annuler', { kind: 'secondary', onClick: () => m.close() }), go] });
-  api.saleOptions().then((rows) => {
-    saleOptions = rows.filter((o) => o.active);
-    optionsBox.replaceChildren(h('span', { class: 'label' }, 'Options facultatives'), ...(saleOptions.length
-      ? saleOptions.map((o) => h('label', { class: 'check' }, h('input', { type: 'checkbox', value: o.id, onChange: sync }), h('span', {}, h('strong', {}, o.label), h('div', { class: 'hint' }, money(o.price)))))
-      : [h('span', { class: 'muted small' }, 'Aucune option configurée.')]));
-    sync();
-  }).catch((e) => optionsBox.replaceChildren(h('p', { class: 'form-error' }, e.message)));
 }

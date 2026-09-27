@@ -22,32 +22,9 @@ export async function pricing() {
       field('Mise en vente automatique après (jours)', days, 'Sans réclamation active, le véhicule passe en attente de mise en vente.'), field('Suppression par un employé (minutes)', mins, "Un employé peut supprimer sa propre fiche pendant ce délai, si aucun client n'a réagi.")),
     h('label', { class: 'check' }, apply, h('span', {}, h('strong', {}, 'Appliquer aussi aux véhicules déjà en fourrière'), h('div', { class: 'hint' }, 'Sinon, seuls les nouveaux véhicules utiliseront ces tarifs.'))),
     h('div', {}, save));
-  const optionRows = h('div', { class: 'stack' }, loading());
-  const optionName = h('input', { class: 'input', maxlength: '80', placeholder: 'Ex. Plein rempli', required: true });
-  const optionPrice = h('input', { class: 'input', type: 'number', min: '0', step: '1', placeholder: 'Prix en €', required: true });
-  const addOption = btn('Ajouter une option', { ic: 'plus', onClick: () => busy(addOption, async () => {
-    await api.saveSaleOption(null, optionName.value, optionPrice.value, true); optionName.value = ''; optionPrice.value = ''; toast('Option ajoutée.', 'ok'); await loadOptions();
-  }) });
-  async function loadOptions() {
-    const rows = await api.saleOptions();
-    optionRows.replaceChildren(rows.length ? rows.map((o) => {
-      const label = h('input', { class: 'input', maxlength: '80', value: o.label });
-      const price = h('input', { class: 'input', type: 'number', min: '0', step: '1', value: String(o.price) });
-      const active = h('input', { type: 'checkbox', checked: o.active });
-      const saveOption = btn('Enregistrer', { sm: true, kind: 'secondary', onClick: () => busy(saveOption, async () => {
-        await api.saveSaleOption(o.id, label.value, price.value, active.checked); toast('Option mise à jour.', 'ok'); await loadOptions();
-      }) });
-      return h('div', { class: 'form-grid', style: { alignItems: 'end' } }, field('Option', label), field('Prix (€)', price), h('label', { class: 'check' }, active, h('span', {}, 'Disponible')), saveOption);
-    }) : [empty('Aucune option', 'Ajoutez des prestations facultatives pour l’achat d’un véhicule.')]);
-  }
-  const options = h('section', { class: 'card card-pad stack' }, h('h2', { class: 'card-title' }, 'Options à l’achat'),
-    h('p', { class: 'muted' }, 'Les acheteurs peuvent cocher plusieurs options depuis la conversation. Leur montant est ajouté au prix du véhicule.'),
-    h('div', { class: 'form-grid' }, field('Nom de l’option', optionName), field('Prix (€)', optionPrice), addOption), optionRows);
-  const el = adminLayout('pricing', pageHead('Tarifs', 'Ces valeurs servent à calculer automatiquement le montant de chaque véhicule.'), h('div', { class: 'stack-lg' }, form, options,
+  return adminLayout('pricing', pageHead('Tarifs', 'Ces valeurs servent à calculer automatiquement le montant de chaque véhicule.'), h('div', { class: 'stack-lg' }, form,
     h('section', { class: 'card card-pad stack' }, h('h2', { class: 'card-title' }, 'Aperçu du montant total'), prev),
     p.updated_by_name ? h('p', { class: 'muted small' }, `Dernière modification par ${p.updated_by_name}, ${dt(p.updated_at)}.`) : null));
-  await loadOptions();
-  return el;
 }
 
 /* ---------------- Historique ---------------- */
