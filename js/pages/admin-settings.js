@@ -1,8 +1,36 @@
-/* Réglages des gérants : tarifs, historique des actions, connexion Discord. */
+/* Réglages des gérants : tarifs, options de vente, historique des actions, connexion Discord. */
 import { h, icon, loading, empty, toast, busy, btn, field, confirmDialog } from '../lib/ui.js';
 import * as api from '../lib/api.js';
 import { adminLayout, pageHead } from '../lib/layout.js';
 import { money, dt, rel } from '../lib/format.js';
+
+/* ---------------- Options de vente (extras choisis à l'achat, ex. « Réservoir plein ») ---------------- */
+async function optionsSection() {
+  const box = h('div', {}, loading());
+  const label = h('input', { class: 'input', id: 'opt-label', maxlength: '60', autocomplete: 'off', placeholder: 'Ex. Réservoir plein' });
+  const price = h('input', { class: 'input', id: 'opt-price', type: 'number', min: '0', step: '1', placeholder: '0' });
+  const add = h('button', { class: 'btn', type: 'submit' }, icon('plus'), 'Ajouter l\'option');
+  async function load() {
+    const rows = await api.saleOptions();
+    box.replaceChildren(rows.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table stackable' },
+      h('thead', {}, h('tr', {}, ['Option', 'Prix', 'Utilisée', 'État', ''].map((t) => h('th', {}, t)))),
+      h('tbody', {}, rows.map((o) => h('tr', {}, h('td', { 'data-label': 'Option' }, h('strong', {}, o.label)), h('td', { 'data-label': 'Prix', class: 'num' }, money(o.price)),
+        h('td', { 'data-label': 'Utilisée', class: 'num' }, String(o.uses)), h('td', { 'data-label': 'État' }, h('span', { class: `badge ${o.active ? 'green' : 'gray'}` }, o.active ? 'Active' : 'Désactivée')),
+        h('td', { class: 'actions', 'data-label': '' }, h('div', { class: 'row', style: { justifyContent: 'flex-end', gap: '6px' } },
+          btn(o.active ? 'Désactiver' : 'Activer', { sm: true, kind: 'secondary', onClick: async () => { try { await api.toggleSaleOption(o.id, !o.active); toast(o.active ? 'Option désactivée.' : 'Option activée.', 'ok'); await load(); } catch (e) { toast(e.message, 'error'); } } }),
+          btn('', { sm: true, kind: 'ghost', ic: 'trash', disabled: o.uses > 0, title: o.uses ? 'Déjà utilisée : désactivez-la' : 'Supprimer', onClick: async () => {
+            if (await confirmDialog({ title: `Supprimer « ${o.label} » ?`, confirmLabel: 'Supprimer', danger: true })) { try { await api.deleteSaleOption(o.id); toast('Option supprimée.', 'ok'); await load(); } catch (e) { toast(e.message, 'error'); } } } }))))))))
+      : empty('Aucune option pour le moment', 'Ajoutez-en une avec le formulaire ci-dessus.'));
+  }
+  await load();
+  return h('section', { class: 'card card-pad stack' }, h('h2', { class: 'card-title' }, 'Options de vente'),
+    h('p', { class: 'muted' }, 'Des extras à prix fixe que l\'acheteur peut cocher à l\'achat d\'un véhicule (« Réservoir plein », « Moteur réparé »…), en plus du prix de vente.'),
+    h('form', { class: 'row', onSubmit: (e) => { e.preventDefault(); busy(add, async () => {
+        await api.createSaleOption(label.value, Number(price.value) || 0); label.value = ''; price.value = ''; toast('Option ajoutée.', 'ok'); await load();
+      }); } },
+      h('div', { class: 'grow' }, field('Nom de l\'option', label)), h('div', { style: { width: '140px' } }, field('Prix (€)', price)), h('div', { style: { alignSelf: 'flex-end' } }, add)),
+    box);
+}
 
 /* ---------------- Tarifs ---------------- */
 export async function pricing() {
@@ -24,7 +52,8 @@ export async function pricing() {
     h('div', {}, save));
   return adminLayout('pricing', pageHead('Tarifs', 'Ces valeurs servent à calculer automatiquement le montant de chaque véhicule.'), h('div', { class: 'stack-lg' }, form,
     h('section', { class: 'card card-pad stack' }, h('h2', { class: 'card-title' }, 'Aperçu du montant total'), prev),
-    p.updated_by_name ? h('p', { class: 'muted small' }, `Dernière modification par ${p.updated_by_name}, ${dt(p.updated_at)}.`) : null));
+    p.updated_by_name ? h('p', { class: 'muted small' }, `Dernière modification par ${p.updated_by_name}, ${dt(p.updated_at)}.`) : null,
+    await optionsSection()));
 }
 
 /* ---------------- Historique ---------------- */

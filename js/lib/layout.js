@@ -14,6 +14,7 @@ export function adminLayout(active, ...content) {
     isManager() && ['/admin/tarifs', 'euro', 'Tarifs', 'pricing'],
     isManager() && ['/admin/codes', 'ticket', 'Codes promo', 'codes'],
     isManager() && ['/admin/historique', 'history', 'Historique', 'history'],
+    ['/saisies', 'siren', 'Saisies', 'saisies'],
     isManager() && ['/admin/discord', 'discord', 'Discord', 'discord'],
   ].filter(Boolean);
   const p = state.profile;

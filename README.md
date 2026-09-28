@@ -26,6 +26,16 @@ Site web complet pour une fourrière : les visiteurs retrouvent leur véhicule e
 
 **Codes promo** : les gérants créent des codes de réduction (ex. **−50 %**) depuis *Espace personnel → Codes promo*. Dans une conversation, le client (ou un employé) clique sur **« Code promo »** ou tape **`/code SONCODE`** : la réduction s'affiche dans le chat et s'applique automatiquement, **sur la fourrière** (montant à régler pour récupérer le véhicule) **et sur la vente** (prix d'achat). Un code peut être limité à la fourrière ou à la vente, avoir une date de fin, un nombre d'utilisations maximum et n'être utilisable qu'une fois par personne. Les montants sont toujours recalculés par le serveur.
 
+**Options de vente** : les gérants créent des extras à prix fixe (« Réservoir plein », « Moteur réparé »…) dans *Espace personnel → Tarifs*. Dans sa conversation d'achat, le client coche les options voulues et clique sur **« Acheter maintenant »** : la vente est enregistrée tout de suite (prix de l'annonce, promotion, code promo et options recalculés par le serveur).
+
+**Promotion sur une annonce** : en mettant un véhicule en vente (ou en modifiant l'annonce), un gérant peut définir une promotion (ex. −20 %) : la page publique affiche 100 000 € barré → 80 000 €, sans code à saisir. Un code promo peut se cumuler par-dessus.
+
+**Tarification anticipée** : dans *Ventes → Tarification anticipée* (ou sur la fiche du véhicule), un gérant prépare le prix de vente d'un véhicule dès son arrivée. À l'échéance sans réclamation, il passe **directement en vente** avec ce prix ; sans prix préparé, il rejoint l'attente habituelle.
+
+**Mise en vente forcée** : sur la fiche d'un véhicule en fourrière, **l'administrateur seul** voit « Mettre en vente maintenant » pour ne pas attendre le délai (refusé si une demande de récupération est en cours).
+
+**Forces de l'ordre et saisies** : un gérant crée des comptes « forces de l'ordre » (*Personnel*). Ils n'ont accès qu'à la page **Saisies** (plaque, modèle, couleur, police ou gendarmerie), avec un bouton « Récupérée » et leurs propres statistiques, séparées de celles de la fourrière. Le personnel de la fourrière enregistre les saisies ; ces comptes n'ont aucun accès aux véhicules, conversations ou personnel.
+
 **Automatique** : à **7 jours** (modifiable) sans réclamation active, un véhicule passe en « En attente de mise en vente », visible **uniquement des gérants et de l'administrateur**.
 
 ### Qui peut faire quoi
@@ -43,6 +53,12 @@ Site web complet pour une fourrière : les visiteurs retrouvent leur véhicule e
 | Promouvoir / rétrograder un membre | | | | ✅ |
 | Supprimer définitivement une conversation | | | ✅ | ✅ |
 | Créer, désactiver, supprimer des codes promo | | | ✅ | ✅ |
+| Créer des options de vente, préparer un tarif, définir une promotion | | | ✅ | ✅ |
+| Acheter directement (« Acheter maintenant ») | ✅ (sa conversation) | | | |
+| Mettre en vente maintenant (sans attendre le délai) | | | | ✅ |
+| Enregistrer une saisie | | ✅ | ✅ | ✅ |
+| Consulter / clôturer les saisies, leurs statistiques | Forces de l'ordre ✅ | ✅ | ✅ | ✅ |
+| Créer un compte forces de l'ordre | | | ✅ | ✅ |
 | Saisir un code promo dans une conversation | ✅ (la sienne) | ✅ | ✅ | ✅ |
 | Retirer un code promo d'une conversation | | | ✅ | ✅ |
 | Statistiques de base | | ✅ | ✅ | ✅ |
@@ -196,12 +212,12 @@ supabase/
   install_all.sql        ← À coller dans le SQL Editor (étape 1)
   create_admin.sql       Création de Gabin Muller (étape 2)
   cron_recommended.sql   Tâche automatique (étape 3)
-  parts/                 Les 7 fichiers qui composent install_all.sql (lecture / maintenance)
+  parts/                 Les 8 fichiers qui composent install_all.sql (lecture / maintenance)
 scripts/build-sql.sh     Régénère install_all.sql à partir de parts/
 .env.example             Rappel des valeurs et de leur niveau de confidentialité
 ```
 
-Les scripts SQL, dans l'ordre : `01` tables · `02` comptes, personnel, triggers · `03` véhicules, demandes, conversations, ventes, statistiques · `04` codes promo · `05` Discord · `06` sécurité (RLS, droits) · `07` stockage et temps réel.
+Les scripts SQL, dans l'ordre : `01` tables · `02` comptes, personnel, triggers · `03` véhicules, demandes, conversations, ventes, statistiques · `04` codes promo · `05` options de vente, tarif anticipé, achat direct, saisies, forces de l'ordre · `06` Discord · `07` sécurité (RLS, droits) · `08` stockage et temps réel.
 
 ---
 
@@ -211,6 +227,7 @@ Les scripts SQL, dans l'ordre : `01` tables · `02` comptes, personnel, triggers
 - **Aucune écriture directe** depuis le navigateur, hormis l'envoi d'un message : tout passe par des fonctions SQL qui vérifient le rôle. L'auteur, le rôle et l'heure d'un message, la date et l'auteur d'un véhicule, les jours et les montants sont **imposés par le serveur**.
 - **RLS activée** sur toutes les tables ; un client ne voit que ses propres conversations ; les véhicules « en attente de vente » sont invisibles hors gérants / admin.
 - **Gabin Muller** : identité réservée, création possible uniquement depuis le SQL Editor, non supprimable, non modifiable, non licenciable.
+- **Forces de l'ordre** : rôle distinct, qui n'est pas considéré comme du personnel : aucune lecture des véhicules, conversations, personnel ni statistiques de la fourrière (règles RLS + contrôles dans chaque fonction). **Achat direct** : le prix n'est jamais fourni par le navigateur ; un client ne peut acheter que depuis sa propre conversation.
 - **Codes promo** : les tables de codes ne sont lisibles par personne depuis le navigateur (accès uniquement par des fonctions vérifiant le rôle). Un client ne peut ni créer un code, ni modifier sa réduction, ni appliquer un code sur la conversation d'un autre. Anti-devinette : 8 essais ratés en 10 minutes bloquent la saisie. Un code abandonné (conversation fermée sans récupération ni vente) est rendu disponible.
 - Le texte saisi (modèles, messages…) est toujours affiché comme **du texte**, jamais comme du HTML.
 - Une politique de sécurité de contenu (CSP) limite le site à ses propres fichiers et à Supabase.

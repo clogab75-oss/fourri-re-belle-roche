@@ -6,6 +6,7 @@ import { plateEl, colorTag, pathsOf } from '../lib/cards.js';
 import { money, dt, rel, norm, plateKey } from '../lib/format.js';
 import { photoPicker } from '../lib/photopicker.js';
 import { recoveredModal, saleModal, soldModal } from '../lib/actions.js';
+import { plannedModal } from './admin-sales.js';
 import { lightbox } from '../lib/ui.js';
 
 export function addVehicleModal(onCreated) {
@@ -118,6 +119,9 @@ export async function detail({ params, navigate }) {
           v.auto_flagged_at ? [h('dt', {}, 'Passé en vente auto'), h('dd', {}, dt(v.auto_flagged_at))] : null,
           v.sale_status === 'a_vendre' ? [h('dt', {}, 'Prix de vente'), h('dd', {}, money(v.sale_price)), h('dt', {}, 'Annonce'), h('dd', {}, v.sale_description)] : null,
           v.sale_status === 'vendue' ? [h('dt', {}, 'Vendu à'), h('dd', {}, `${v.buyer_name || '—'} · ${money(v.sold_price)} · ${dt(v.sold_at)}`)] : null,
+          v.sale_status === 'vendue' && v.sale_options && v.sale_options.length ? [h('dt', {}, 'Options vendues'), h('dd', {}, v.sale_options.map((o) => `${o.label} (${money(o.price)})`).join(', ') + ` — total ${money(v.sale_options_total)}`)] : null,
+          v.status === 'a_vendre' && v.sale_promo_percent ? [h('dt', {}, 'Promotion affichée'), h('dd', {}, `−${v.sale_promo_percent} % (annonce à ${money(v.sale_price)}, affichée à ${money(v.sale_effective_price)})`)] : null,
+          manager && ['en_fourriere', 'reclamee'].includes(v.status) ? [h('dt', {}, 'Tarif préparé'), h('dd', {}, v.planned_price ? `${money(v.planned_price)} (mise en vente automatique dès que possible)` : h('span', { class: 'muted' }, 'Aucun'))] : null,
           v.sale_status === 'vendue' && v.sale_discount_code ? [h('dt', {}, 'Code promo (vente)'), h('dd', {}, `${v.sale_discount_code} (−${v.sale_discount_percent} %) · prix avant réduction ${money(v.sale_price)}`)] : null,
           v.notes ? [h('dt', {}, 'Notes'), h('dd', {}, v.notes)] : null,
           v.updated_by_name ? [h('dt', {}, 'Dernière modification'), h('dd', {}, `${v.updated_by_name} · ${rel(v.updated_at)}`)] : null));
@@ -134,6 +138,12 @@ export async function detail({ params, navigate }) {
 
     /* Actions */
     const A = [];
+    if (manager && ['en_fourriere', 'reclamee'].includes(v.status)) A.push(btn(v.planned_price ? 'Modifier le tarif préparé' : 'Préparer un prix de vente', { kind: 'secondary', ic: 'tag', onClick: () => plannedModal(v, reload) }));
+    if (api.isAdmin() && ['en_fourriere', 'reclamee'].includes(v.status)) A.push(btn('Mettre en vente maintenant', { kind: 'amber', ic: 'tag', onClick: async () => {
+      const pret = v.planned_price ? `Il sera publié tout de suite au prix préparé (${money(v.planned_price)}).` : 'Il passera en attente de mise en vente : vous pourrez alors fixer son prix.';
+      if (!(await confirmDialog({ title: 'Mettre en vente sans attendre ?', message: `Le véhicule ${v.plate} sera mis en vente sans attendre la fin du délai habituel. ${pret} Le montant de garde est figé à aujourd'hui. Impossible si une demande de récupération est en cours.`, confirmLabel: 'Mettre en vente maintenant' }))) return;
+      try { await api.forceForSale(id); toast(v.planned_price ? 'Véhicule mis en vente.' : 'Véhicule prêt : fixez son prix dans « Ventes ».', 'ok'); reload(); } catch (e) { toast(e.message, 'error'); }
+    } }));
     if (['en_fourriere', 'reclamee'].includes(v.status) || (v.status === 'attente_vente' && manager)) A.push(btn('Marquer comme récupéré', { ic: 'check', onClick: () => recoveredModal(v, openClaims, () => { editing = false; reload(); }) }));
     if (manager && v.status === 'attente_vente') A.push(btn('Mettre en vente', { kind: 'amber', ic: 'tag', onClick: () => saleModal(v, reload) }));
     if (manager && v.status === 'a_vendre') A.push(btn("Modifier l'annonce", { kind: 'secondary', ic: 'edit', onClick: () => saleModal(v, reload, true) }), btn('Marquer comme vendu', { ic: 'check', onClick: () => soldModal(v, saleConvs, reload) }),

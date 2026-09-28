@@ -1,6 +1,6 @@
 -- =====================================================================
 --  FOURRIÈRE DE BELLE ROCHE — Base de données
---  Fichier 2/7 : fonctions internes, triggers, comptes et personnel
+--  Fichier 2/8 : fonctions internes, triggers, comptes et personnel
 -- =====================================================================
 
 -- ---------------------------------------------------------------------

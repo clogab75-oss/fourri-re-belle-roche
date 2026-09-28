@@ -1,6 +1,6 @@
 -- =====================================================================
 --  FOURRIÈRE DE BELLE ROCHE — Base de données
---  Fichier 1/4 : extensions, tables et index
+--  Fichier 1/8 : extensions, tables et index
 --  À exécuter dans Supabase : SQL Editor > New query > coller > Run
 --  Le script peut être relancé sans danger (il ne supprime aucune donnée).
 -- =====================================================================
@@ -49,7 +49,7 @@ create table if not exists public.profiles (
   nom_key       text not null,
   prenom_key    text not null,
   role          text not null default 'client'
-                check (role in ('client', 'employe', 'gerant', 'admin')),
+                check (role in ('client', 'employe', 'gerant', 'admin', 'forces_ordre')),
   is_main_admin boolean not null default false,
   phone_rp      text,
   created_at    timestamptz not null default now(),
@@ -341,3 +341,62 @@ create table if not exists private.discount_attempts (
   at      timestamptz not null default now()
 );
 create index if not exists discount_attempts_user_idx on private.discount_attempts (user_id, at);
+
+
+-- =====================================================================
+--  AJOUT : options de vente, tarification anticipée, promotion affichée,
+--  comptes forces de l'ordre et saisies. Colonnes/tables ajoutées de façon
+--  répétable (IF NOT EXISTS) pour pouvoir relancer l'installation sans
+--  perdre de données.
+-- =====================================================================
+
+-- Sur une base déjà installée, la contrainte ci-dessus (dans le CREATE TABLE) n'est pas rejouée :
+-- on la met à jour explicitement pour autoriser le nouveau rôle « forces_ordre ».
+do $$
+begin
+  alter table public.profiles drop constraint if exists profiles_role_check;
+  alter table public.profiles add constraint profiles_role_check
+    check (role in ('client', 'employe', 'gerant', 'admin', 'forces_ordre'));
+exception when others then
+  raise notice 'Contrainte de rôle non mise à jour automatiquement (%). Vérifiez-la manuellement si besoin.', sqlerrm;
+end $$;
+
+-- Tarif préparé à l'avance pendant que le véhicule est encore en fourrière.
+alter table public.vehicles add column if not exists planned_price numeric(12, 2) check (planned_price is null or planned_price > 0);
+alter table public.vehicles add column if not exists planned_description text check (planned_description is null or char_length(planned_description) <= 2000);
+
+-- Promotion affichée directement sur l'annonce (sans code) + options choisies à l'achat.
+alter table public.vehicle_sales add column if not exists promo_percent integer check (promo_percent is null or promo_percent between 1 and 99);
+alter table public.vehicle_sales add column if not exists options jsonb not null default '[]'::jsonb;
+alter table public.vehicle_sales add column if not exists options_total numeric(12, 2) not null default 0;
+
+-- Options de vente (ex. « Réservoir plein », « Moteur réparé ») avec leur propre prix.
+create table if not exists public.sale_options (
+  id              uuid primary key default gen_random_uuid(),
+  label           text not null check (char_length(btrim(label)) between 2 and 60),
+  price           numeric(12, 2) not null check (price >= 0),
+  active          boolean not null default true,
+  created_by      uuid references public.profiles (id) on delete set null,
+  created_by_name text,
+  created_at      timestamptz not null default now()
+);
+create unique index if not exists sale_options_label_uidx on public.sale_options (lower(btrim(label)));
+
+-- Saisies des forces de l'ordre : simple registre, sans lien avec la facturation de la fourrière.
+create table if not exists public.seizures (
+  id                uuid primary key default gen_random_uuid(),
+  plate             text not null check (char_length(btrim(plate)) between 2 and 16),
+  plate_key         text not null,
+  model             text not null check (char_length(btrim(model)) between 1 and 60),
+  color             text not null check (char_length(btrim(color)) between 1 and 40),
+  agency            text not null check (agency in ('police', 'gendarmerie')),
+  status            text not null default 'en_cours' check (status in ('en_cours', 'recuperee')),
+  created_by        uuid references public.profiles (id) on delete set null,
+  created_by_name   text,
+  created_at        timestamptz not null default now(),
+  recovered_by      uuid references public.profiles (id) on delete set null,
+  recovered_by_name text,
+  recovered_at      timestamptz
+);
+create unique index if not exists seizures_open_plate_uidx on public.seizures (plate_key) where status = 'en_cours';
+create index if not exists seizures_status_idx on public.seizures (status, created_at desc);

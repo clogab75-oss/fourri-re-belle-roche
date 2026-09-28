@@ -1,6 +1,6 @@
 -- =====================================================================
 --  FOURRIÈRE DE BELLE ROCHE — Base de données
---  Fichier 3/7 : véhicules, claims, conversations, ventes, statistiques
+--  Fichier 3/8 : véhicules, claims, conversations, ventes, statistiques
 --  Toutes les écritures passent par ces fonctions : les permissions sont
 --  vérifiées ici, dans la base, jamais dans le navigateur.
 -- =====================================================================
@@ -238,6 +238,7 @@ begin
          billing_end_at = coalesce(billing_end_at, now()), final_amount = v_charge,
          original_amount = case when v_pct is null then null else v_amount end,
          discount_code = v_code, discount_percent = v_pct,
+         planned_price = null, planned_description = null,
          updated_by = v_uid, updated_by_name = v_name
    where id = p_vehicle_id;
   if p_claim_id is not null then
@@ -309,8 +310,9 @@ end $$;
 -- ---------------------------------------------------------------------
 --  MISE EN VENTE
 -- ---------------------------------------------------------------------
+drop function if exists public.list_vehicle_for_sale(uuid, numeric, text, text[]);
 create or replace function public.list_vehicle_for_sale(
-  p_vehicle_id uuid, p_price numeric, p_description text, p_new_photo_paths text[] default '{}')
+  p_vehicle_id uuid, p_price numeric, p_description text, p_new_photo_paths text[] default '{}', p_promo_percent integer default null)
 returns void
 language plpgsql security definer set search_path = public, private as $$
 declare
@@ -328,6 +330,9 @@ begin
   if p_price is null or p_price <= 0 or p_price > 1000000000 then raise exception 'Indiquez un prix de vente valide.'; end if;
   if char_length(v_desc) < 3 then raise exception 'Ajoutez une description.'; end if;
   if char_length(v_desc) > 2000 then raise exception 'Description trop longue (2000 caractères maximum).'; end if;
+  if p_promo_percent is not null and p_promo_percent not between 1 and 99 then
+    raise exception 'La promotion affichée doit être comprise entre 1 et 99 %%.';
+  end if;
   if v_n > 0 then
     if (select count(*) from public.vehicle_photos where vehicle_id = p_vehicle_id) + v_n > 12 then
       raise exception 'Maximum 12 photos par véhicule.';
@@ -341,16 +346,18 @@ begin
     insert into public.vehicle_photos (vehicle_id, storage_path, position, created_by)
     select p_vehicle_id, t.path, v_pos + t.ord - 1, v_uid from unnest(p_new_photo_paths) with ordinality as t(path, ord);
   end if;
-  insert into public.vehicle_sales (vehicle_id, price, description, listed_by, listed_by_name)
-  values (p_vehicle_id, p_price, v_desc, v_uid, v_name);
-  update public.vehicles set status = 'a_vendre', status_changed_at = now(),
+  insert into public.vehicle_sales (vehicle_id, price, description, promo_percent, listed_by, listed_by_name)
+  values (p_vehicle_id, p_price, v_desc, p_promo_percent, v_uid, v_name);
+  update public.vehicles set status = 'a_vendre', status_changed_at = now(), planned_price = null, planned_description = null,
          updated_by = v_uid, updated_by_name = v_name where id = p_vehicle_id;
   perform private.log_action('sale.list', 'vehicle', p_vehicle_id, p_vehicle_id,
-    format('%s a mis en vente le véhicule %s (%s, %s) à %s', v_name, v_v.plate, v_v.model, v_v.color, private.fmt_money(p_price)),
-    jsonb_build_object('price', p_price));
+    format('%s a mis en vente le véhicule %s (%s, %s) à %s%s', v_name, v_v.plate, v_v.model, v_v.color, private.fmt_money(p_price),
+           case when p_promo_percent is null then '' else format(' (promotion affichée −%s %%)', p_promo_percent) end),
+    jsonb_build_object('price', p_price, 'promo_percent', p_promo_percent));
 end $$;
 
-create or replace function public.update_sale(p_vehicle_id uuid, p_price numeric, p_description text) returns void
+drop function if exists public.update_sale(uuid, numeric, text);
+create or replace function public.update_sale(p_vehicle_id uuid, p_price numeric, p_description text, p_promo_percent integer default null) returns void
 language plpgsql security definer set search_path = public, private as $$
 declare v_uid uuid := private.require_manager(); v_desc text := btrim(coalesce(p_description, '')); v_s public.vehicle_sales; v_plate text;
 begin
@@ -358,11 +365,15 @@ begin
   if not found then raise exception 'Ce véhicule n''est pas à vendre.'; end if;
   if p_price is null or p_price <= 0 or p_price > 1000000000 then raise exception 'Indiquez un prix de vente valide.'; end if;
   if char_length(v_desc) < 3 then raise exception 'Ajoutez une description.'; end if;
-  update public.vehicle_sales set price = p_price, description = v_desc where id = v_s.id;
+  if p_promo_percent is not null and p_promo_percent not between 1 and 99 then
+    raise exception 'La promotion affichée doit être comprise entre 1 et 99 %%.';
+  end if;
+  update public.vehicle_sales set price = p_price, description = v_desc, promo_percent = p_promo_percent where id = v_s.id;
   select plate into v_plate from public.vehicles where id = p_vehicle_id;
   perform private.log_action('sale.update', 'vehicle', p_vehicle_id, p_vehicle_id,
-    format('%s a modifié l''annonce du véhicule %s (%s)', private.display_name(v_uid), v_plate, private.fmt_money(p_price)),
-    jsonb_build_object('old_price', v_s.price, 'new_price', p_price));
+    format('%s a modifié l''annonce du véhicule %s (%s)%s', private.display_name(v_uid), v_plate, private.fmt_money(p_price),
+           case when p_promo_percent is null then '' else format(' (promotion affichée −%s %%)', p_promo_percent) end),
+    jsonb_build_object('old_price', v_s.price, 'new_price', p_price, 'promo_percent', p_promo_percent));
 end $$;
 
 create or replace function public.withdraw_sale(p_vehicle_id uuid) returns void
@@ -382,17 +393,18 @@ begin
     format('%s a retiré le véhicule %s de la vente', private.display_name(v_uid), v_v.plate));
 end $$;
 
+drop function if exists public.mark_vehicle_sold(uuid, uuid, numeric, text);
 create or replace function public.mark_vehicle_sold(
   p_vehicle_id uuid, p_conversation_id uuid default null,
-  p_sold_price numeric default null, p_buyer_name text default null)
+  p_sold_price numeric default null, p_buyer_name text default null, p_option_ids uuid[] default '{}')
 returns void
 language plpgsql security definer set search_path = public, private as $$
 declare
   v_uid uuid := private.require_manager();
   v_name text := private.display_name(v_uid);
   v_v public.vehicles; v_s public.vehicle_sales; v_c public.conversations;
-  v_buyer_id uuid; v_buyer text := nullif(btrim(coalesce(p_buyer_name, '')), ''); v_price numeric;
-  v_pct integer; v_code text; v_red uuid; r record;
+  v_buyer_id uuid; v_buyer text := nullif(btrim(coalesce(p_buyer_name, '')), ''); v_price numeric; v_base numeric;
+  v_pct integer; v_code text; v_red uuid; v_items jsonb; v_opts_total numeric; v_opt_txt text; v_note text := ''; r record;
 begin
   select * into v_v from public.vehicles where id = p_vehicle_id for update;
   if not found or v_v.status <> 'a_vendre' then raise exception 'Ce véhicule n''est pas à vendre.'; end if;
@@ -410,26 +422,32 @@ begin
   elsif v_buyer is null then
     raise exception 'Indiquez l''acheteur.';
   end if;
-  -- prix par défaut = prix de l'annonce, réduit du code promo de l'acheteur ; un gérant peut imposer un autre prix
-  v_price := coalesce(p_sold_price, case when v_pct is null then v_s.price else round(v_s.price * (100 - v_pct) / 100) end);
-  if v_price < 0 or (v_price = 0 and coalesce(v_pct, 0) < 100) then raise exception 'Prix de vente invalide.'; end if;
+  -- prix par défaut = prix de l'annonce (déjà réduit d'une éventuelle promotion affichée), réduit du code promo
+  -- de l'acheteur, plus les options choisies ; un gérant peut toujours imposer un autre montant final.
+  v_base := case when v_s.promo_percent is null then v_s.price else round(v_s.price * (100 - v_s.promo_percent) / 100) end;
+  select items, total into v_items, v_opts_total from private.options_snapshot(p_option_ids, false);
+  v_price := coalesce(p_sold_price, (case when v_pct is null then v_base else round(v_base * (100 - v_pct) / 100) end) + v_opts_total);
+  if v_price < 0 or (v_price = 0 and coalesce(v_pct, 0) < 100 and v_opts_total = 0) then raise exception 'Prix de vente invalide.'; end if;
   update public.vehicle_sales
      set status = 'vendue', sold_at = now(), sold_price = v_price, buyer_id = v_buyer_id,
          buyer_name = v_buyer, sold_by = v_uid, sold_by_name = v_name,
-         discount_code = v_code, discount_percent = v_pct
+         discount_code = v_code, discount_percent = v_pct, options = v_items, options_total = v_opts_total
    where id = v_s.id;
   if v_red is not null then
     update public.discount_redemptions
-       set status = 'utilisee', used_at = now(), original_amount = v_s.price, final_amount = v_price
+       set status = 'utilisee', used_at = now(), original_amount = v_base, final_amount = v_price - v_opts_total
      where id = v_red;
   end if;
   update public.vehicles set status = 'vendue', status_changed_at = now(),
          updated_by = v_uid, updated_by_name = v_name where id = p_vehicle_id;
+  select string_agg(format('%s (%s)', o ->> 'label', private.fmt_money((o ->> 'price')::numeric)), ', ') into v_opt_txt
+    from jsonb_array_elements(v_items) o;
+  if v_opt_txt is not null then v_note := format(' + options : %s', v_opt_txt); end if;
   for r in select id, client_id from public.conversations
             where vehicle_id = p_vehicle_id and type = 'vente' and status = 'ouverte' loop
     if r.id = p_conversation_id then
-      perform private.close_conv(r.id, v_uid, format('Véhicule vendu pour %s%s. Merci pour votre achat !', private.fmt_money(v_price),
-        case when v_pct is null then '' else format(' (code %s, −%s %% au lieu de %s)', v_code, v_pct, private.fmt_money(v_s.price)) end));
+      perform private.close_conv(r.id, v_uid, format('Véhicule vendu pour %s%s%s. Merci pour votre achat !', private.fmt_money(v_price),
+        case when v_pct is null then '' else format(' (code %s, −%s %% sur %s)', v_code, v_pct, private.fmt_money(v_base)) end, v_note));
     else
       perform private.close_conv(r.id, v_uid, 'Ce véhicule a été vendu. La conversation est fermée.');
     end if;
@@ -437,9 +455,9 @@ begin
       format('Le véhicule %s a été vendu.', v_v.model), '#/messages/' || r.id, r.id, p_vehicle_id);
   end loop;
   perform private.log_action('sale.sold', 'vehicle', p_vehicle_id, p_vehicle_id,
-    format('%s a vendu le véhicule %s (%s) à %s pour %s%s', v_name, v_v.plate, v_v.model, v_buyer, private.fmt_money(v_price),
-           case when v_pct is null then '' else format(' (code %s, −%s %%)', v_code, v_pct) end),
-    jsonb_build_object('price', v_price, 'buyer', v_buyer, 'original_price', v_s.price, 'discount_percent', v_pct));
+    format('%s a vendu le véhicule %s (%s) à %s pour %s%s%s', v_name, v_v.plate, v_v.model, v_buyer, private.fmt_money(v_price),
+           case when v_pct is null then '' else format(' (code %s, −%s %%)', v_code, v_pct) end, v_note),
+    jsonb_build_object('price', v_price, 'buyer', v_buyer, 'original_price', v_base, 'discount_percent', v_pct, 'options_total', v_opts_total));
 end $$;
 
 -- ---------------------------------------------------------------------
@@ -664,18 +682,37 @@ begin
      for update
   loop
     v_end := r.created_at + make_interval(days => v_s.auto_sale_days);
-    update public.vehicles
-       set status = 'attente_vente', status_changed_at = now(), auto_flagged_at = now(),
-           billing_end_at = v_end,
-           final_amount = private.billing_amount(r.handling_fee, r.daily_rate, r.created_at, v_end)
-     where id = r.id;
-    perform private.log_action('vehicle.auto_sale', 'vehicle', r.id, r.id,
-      format('Le véhicule %s (%s, %s) a atteint %s jours en fourrière : il est en attente de mise en vente',
-             r.plate, r.model, r.color, v_s.auto_sale_days),
-      jsonb_build_object('old_amount', private.billing_amount(r.handling_fee, r.daily_rate, r.created_at, v_end)));
-    perform private.notify_roles(array['gerant', 'admin'], 'auto_sale',
-      format('Un véhicule est arrivé à %s jours', v_s.auto_sale_days),
-      format('%s (%s) nécessite une mise en vente.', r.plate, r.model), '#/admin/ventes', null, r.id);
+    if r.planned_price is not null and r.planned_description is not null then
+      -- Un tarif avait été préparé à l'avance : mise en vente immédiate, sans passer par l'attente manuelle.
+      update public.vehicles
+         set status = 'a_vendre', status_changed_at = now(), auto_flagged_at = now(),
+             billing_end_at = v_end, final_amount = private.billing_amount(r.handling_fee, r.daily_rate, r.created_at, v_end),
+             planned_price = null, planned_description = null,
+             updated_by_name = 'Automatique (tarif préparé)'
+       where id = r.id;
+      insert into public.vehicle_sales (vehicle_id, price, description, listed_by, listed_by_name)
+      values (r.id, r.planned_price, r.planned_description, null, 'Mise en vente automatique');
+      perform private.log_action('sale.list', 'vehicle', r.id, r.id,
+        format('Mise en vente automatique de %s (%s, %s) à %s, avec le tarif préparé à l''avance',
+               r.plate, r.model, r.color, private.fmt_money(r.planned_price)),
+        jsonb_build_object('price', r.planned_price, 'planned', true));
+      perform private.notify_roles(array['gerant', 'admin'], 'auto_sale',
+        'Véhicule mis en vente automatiquement', format('%s (%s) est en vente, avec le prix que vous aviez préparé.', r.plate, r.model),
+        '#/admin/ventes', null, r.id);
+    else
+      update public.vehicles
+         set status = 'attente_vente', status_changed_at = now(), auto_flagged_at = now(),
+             billing_end_at = v_end,
+             final_amount = private.billing_amount(r.handling_fee, r.daily_rate, r.created_at, v_end)
+       where id = r.id;
+      perform private.log_action('vehicle.auto_sale', 'vehicle', r.id, r.id,
+        format('Le véhicule %s (%s, %s) a atteint %s jours en fourrière : il est en attente de mise en vente',
+               r.plate, r.model, r.color, v_s.auto_sale_days),
+        jsonb_build_object('old_amount', private.billing_amount(r.handling_fee, r.daily_rate, r.created_at, v_end)));
+      perform private.notify_roles(array['gerant', 'admin'], 'auto_sale',
+        format('Un véhicule est arrivé à %s jours', v_s.auto_sale_days),
+        format('%s (%s) nécessite une mise en vente.', r.plate, r.model), '#/admin/ventes', null, r.id);
+    end if;
     v_moved := v_moved + 1;
   end loop;
 
@@ -711,12 +748,14 @@ language sql stable security definer set search_path = public, private as $$
    limit 500;
 $$;
 
+drop function if exists public.public_sale_vehicles();
 create or replace function public.public_sale_vehicles()
-returns table (id uuid, model text, color text, description text, price numeric,
-               listed_at timestamptz, arrived_at timestamptz, days_in_impound integer, photos jsonb)
+returns table (id uuid, model text, color text, description text, price numeric, promo_percent integer,
+               effective_price numeric, listed_at timestamptz, arrived_at timestamptz, days_in_impound integer, photos jsonb)
 language sql stable security definer set search_path = public, private as $$
-  select v.id, v.model, v.color, s.description, s.price, s.listed_at, v.created_at,
-         private.billing_days(v.created_at, v.billing_end_at),
+  select v.id, v.model, v.color, s.description, s.price, s.promo_percent,
+         case when s.promo_percent is null then s.price else round(s.price * (100 - s.promo_percent) / 100) end,
+         s.listed_at, v.created_at, private.billing_days(v.created_at, v.billing_end_at),
          coalesce((select jsonb_agg(p.storage_path order by p.position, p.created_at)
                      from public.vehicle_photos p where p.vehicle_id = v.id), '[]'::jsonb)
     from public.vehicles v

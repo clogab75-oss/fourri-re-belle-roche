@@ -1,5 +1,5 @@
 /* Démarrage du site : session, en-tête, routes, actualisations régulières. */
-import { cfg, configured, sb, state, subscribe, syncSession, refreshUnread, heartbeat, isLogged, isStaff, isManager, authFlow, logout, notifications, markNotifications, watch } from './lib/api.js';
+import { cfg, configured, sb, state, subscribe, syncSession, refreshUnread, heartbeat, isLogged, isStaff, isManager, isPolice, authFlow, logout, notifications, markNotifications, watch } from './lib/api.js';
 import { h, icon, pill, loading } from './lib/ui.js';
 import { add, start, navigate, refresh } from './lib/router.js';
 import { rel, initials } from './lib/format.js';
@@ -33,6 +33,7 @@ add('/admin/tarifs', 'manager', P('admin-settings', 'pricing'));
 add('/admin/codes', 'manager', P('admin-codes'));
 add('/admin/historique', 'manager', P('admin-settings', 'history'));
 add('/admin/discord', 'manager', P('admin-settings', 'discord'));
+add('/saisies', 'saisies', P('seizures'));
 
 const access = (g) => {
   if (g === 'public') return 'ok';
@@ -41,6 +42,7 @@ const access = (g) => {
   if (g === 'auth') return 'ok';
   if (g === 'staff') return isStaff() ? 'ok' : 'forbidden';
   if (g === 'manager') return isManager() ? 'ok' : 'forbidden';
+  if (g === 'saisies') return (isStaff() || isPolice()) ? 'ok' : 'forbidden';
   return 'forbidden';
 };
 
@@ -56,7 +58,8 @@ function renderHeader() {
   popOpen = false; document.removeEventListener('click', outside); document.removeEventListener('keydown', escPop);
   const logged = isLogged();
   const links = [['/', 'Accueil'], ['/vehicules', 'Véhicules en fourrière'], ['/vente', 'À vendre']];
-  if (logged) links.push(['/messages', 'Messages', 'messages']);
+  if (logged && !isPolice()) links.push(['/messages', 'Messages', 'messages']);
+  if (isPolice() && !isStaff()) links.push(['/saisies', 'Saisies']);
   if (isStaff()) links.push(['/admin', 'Espace personnel']);
   const nav = h('nav', { class: `main-nav${navOpen ? ' open' : ''}`, id: 'main-nav', 'aria-label': 'Navigation principale' },
     links.map(([href, label, badge]) => h('a', { href: '#' + href, 'aria-current': isActive(href) ? 'page' : null, onClick: () => { navOpen = false; nav.classList.remove('open'); } },

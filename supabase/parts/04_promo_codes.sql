@@ -1,6 +1,6 @@
 -- =====================================================================
 --  FOURRIÈRE DE BELLE ROCHE — Base de données
---  Fichier 4/7 : codes promo
+--  Fichier 4/8 : codes promo
 --
 --  • Les gérants créent des codes (ex. −50 %), valables sur la fourrière,
 --    sur la vente, ou les deux.
@@ -164,7 +164,7 @@ begin
   else
     select * into v_s from public.vehicle_sales where vehicle_id = v_c.vehicle_id and status = 'a_vendre';
     if not found or coalesce(v_v.status, '') <> 'a_vendre' then raise exception 'Ce véhicule n''est plus à vendre.'; end if;
-    v_orig := v_s.price;
+    v_orig := case when v_s.promo_percent is null then v_s.price else round(v_s.price * (100 - v_s.promo_percent) / 100) end;
   end if;
 
   delete from private.discount_attempts where at < now() - interval '1 day';

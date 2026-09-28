@@ -8,7 +8,7 @@ cd "$(dirname "$0")/../supabase" || exit 1
   echo "--  (Contenu = les fichiers du dossier parts/ mis bout à bout.)"
   echo "-- ====================================================================="
   echo
-  for f in 01_tables 02_functions_core 03_functions_app 04_promo_codes 05_discord 06_security 07_storage_realtime; do
+  for f in 01_tables 02_functions_core 03_functions_app 04_promo_codes 05_extras 06_discord 07_security 08_storage_realtime; do
     echo "-- >>>>>>>>>> parts/$f.sql"
     cat "parts/$f.sql"
     echo

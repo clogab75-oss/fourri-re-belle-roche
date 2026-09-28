@@ -49,6 +49,7 @@ export default async function messagesPage(ctx) {
   const sendBtn = h('button', { class: 'btn', type: 'button', 'aria-label': 'Envoyer' }, icon('send'), h('span', { class: 'hide-sm' }, 'Envoyer'));
   const head = h('div', { class: 'thread-head' });
   const promo = h('div', {});
+  const buyBox = h('div', {});
   const foot = h('div', {});
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; };
   ta.addEventListener('input', grow);
@@ -86,7 +87,7 @@ export default async function messagesPage(ctx) {
     const v = vOf(conv); const pct = conv.discount_percent; promo.className = 'promo';
     let amounts = null;
     if (conv.status === 'ouverte' && v) {
-      const base = Number(conv.type === 'claim' ? v.current_amount : v.sale_price);
+      const base = Number(conv.type === 'claim' ? v.current_amount : (v.sale_effective_price ?? v.sale_price));
       if (base) amounts = [conv.type === 'claim' ? ' · montant actuel ' : ' · prix ', h('s', { class: 'strike' }, money(base)), ' → ', h('strong', {}, money(Math.round(base * (100 - pct) / 100)))];
     }
     promo.replaceChildren(icon('ticket'), h('div', { class: 'grow' }, h('strong', {}, `Code ${conv.discount_code}`), ` : −${pct} %`, amounts, conv.status === 'fermee' ? ' · utilisé pour cette transaction' : null),
@@ -94,10 +95,35 @@ export default async function messagesPage(ctx) {
         if (await confirmDialog({ title: 'Retirer le code promo ?', message: 'La réduction ne s\'appliquera plus. Le code redevient disponible.', confirmLabel: 'Retirer' })) {
           try { await api.removeDiscount(conv.id); toast('Code retiré.', 'ok'); await refreshAll(true); } catch (e) { toast(e.message, 'error'); } } } }) : null);
   }
+  let optionsCache = null;
+  async function loadSaleOptions() { if (!optionsCache) optionsCache = await api.activeSaleOptions().catch(() => []); return optionsCache; }
+  async function paintBuy() {
+    buyBox.replaceChildren();
+    const v = vOf(conv);
+    const canBuy = conv.type === 'vente' && conv.status === 'ouverte' && v && v.status === 'a_vendre' && conv.client_id === me.id;
+    if (!canBuy) return;
+    const opts = await loadSaleOptions();
+    const base = conv.discount_percent
+      ? Math.round(Number(v.sale_effective_price ?? v.sale_price) * (100 - conv.discount_percent) / 100)
+      : Number(v.sale_effective_price ?? v.sale_price);
+    const checks = {};
+    const totalLine = h('div', { class: 'buy-total' });
+    const paintTotal = () => { const sum = opts.reduce((s, o) => s + (checks[o.id].checked ? Number(o.price) : 0), 0); totalLine.replaceChildren('Total : ', h('strong', {}, money(base + sum))); };
+    const rows = opts.map((o) => { const cb = h('input', { type: 'checkbox', id: 'buy-opt-' + o.id, onChange: paintTotal }); checks[o.id] = cb;
+      return h('label', { class: 'check' }, cb, h('span', {}, o.label, h('span', { class: 'muted' }, ' — ' + money(o.price)))); });
+    const go = btn('Acheter maintenant', { kind: 'amber', ic: 'tag', onClick: () => busy(go, async () => {
+      const ids = opts.filter((o) => checks[o.id].checked).map((o) => o.id);
+      await api.buyNow(conv.id, ids); toast('Achat confirmé !', 'ok'); await refreshAll(true);
+    }) });
+    paintTotal();
+    buyBox.replaceChildren(h('div', { class: 'card buy-panel' }, h('h3', {}, 'Acheter ce véhicule'),
+      rows.length ? h('div', { class: 'stack', style: { margin: '10px 0' } }, rows) : h('p', { class: 'muted small' }, 'Aucune option disponible pour ce véhicule.'),
+      totalLine, go));
+  }
   function paintHead() {
     const v = vOf(conv);
     const canCode = conv.status === 'ouverte' && !conv.discount_redemption_id && v && (conv.type === 'claim' ? ['en_fourriere', 'reclamee'].includes(v.status) : v.status === 'a_vendre');
-    ta.placeholder = canCode ? 'Écrivez votre message… (astuce : /code VOTRECODE)' : 'Écrivez votre message…';
+    ta.placeholder = canCode ? 'Message… (ou /code MONCODE)' : 'Écrivez votre message…';
     head.replaceChildren(
       h('button', { class: 'btn-icon back', type: 'button', 'aria-label': 'Retour à la liste', onClick: () => select(null) }, icon('left')),
       v && v.photos && v.photos[0] ? h('img', { class: 'thumb', src: api.photoUrl(v.photos[0].path), alt: '' }) : null,
@@ -147,8 +173,8 @@ export default async function messagesPage(ctx) {
     if (!conv) { thread.replaceChildren(h('div', { class: 'chat-empty' }, h('div', {}, h('h3', {}, 'Conversation introuvable'), h('p', { class: 'muted' }, 'Elle a peut-être été supprimée.')))); return; }
     if (!vmap.has(conv.vehicle_id)) (await api.vehiclesByIds([conv.vehicle_id])).forEach((v) => vmap.set(v.id, v));
     msgs = await api.messages(selected);
-    if (!thread.contains(msgsBox)) { thread.replaceChildren(head, promo, msgsBox, foot); lastSig = ''; firstPaint = true; }
-    paintHead(); paintPromo(); paintMsgs(force);
+    if (!thread.contains(msgsBox)) { thread.replaceChildren(head, promo, buyBox, msgsBox, foot); lastSig = ''; firstPaint = true; }
+    paintHead(); paintPromo(); await paintBuy(); paintMsgs(force);
     if (msgs.some((m) => m.sender_id !== me.id && m.kind === 'text')) markReadSoon();
   }
   function select(id) {

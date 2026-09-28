@@ -24,5 +24,12 @@ export function meta(rows) {
 export function meter(label, amount) {
   return h('div', { class: 'meter' }, h('span', { class: 'lbl' }, label), h('span', { class: 'amt num' }, money(amount)));
 }
+/* Prix de vente, avec la promotion affichée (sans code) si le gérant en a défini une. */
+export function saleMeter(price, promoPercent, effectivePrice) {
+  if (!promoPercent) return meter('Prix de vente', price);
+  return h('div', { class: 'meter promo' },
+    h('span', { class: 'lbl' }, 'Prix de vente', h('span', { class: 'badge amber', style: { marginLeft: '8px' } }, `−${promoPercent} %`)),
+    h('span', { class: 'amt num' }, h('s', { class: 'strike' }, money(price)), ' ', money(effectivePrice ?? Math.round(price * (100 - promoPercent) / 100))));
+}
 export const arrival = (d) => `${dt(d)} (${rel(d)})`;
 export { badge };

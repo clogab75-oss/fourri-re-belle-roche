@@ -339,3 +339,14 @@ main#view:focus { outline: none; }
 .code-chip .btn-icon svg { width: 16px; height: 16px; }
 .pct-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
 @media (max-width: 860px) { .thread-head { gap: 8px; } .promo { padding: 9px 12px; font-size: .9rem; } }
+
+/* ---------- Achat direct (panneau dans le chat) ---------- */
+.buy-panel { padding: 16px; margin: 0 16px 12px; border: 1.5px solid var(--amber-500); }
+.buy-panel h3 { margin-bottom: 4px; }
+.buy-total { font-size: 1.05rem; margin: 8px 0 12px; }
+.buy-total strong { font-family: var(--font-display); font-size: 1.3rem; }
+@media (max-width: 860px) { .buy-panel { margin: 0 10px 10px; padding: 12px; } }
+
+/* ---------- Promotion affichée sur une annonce ---------- */
+.meter.promo .lbl { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.meter.promo .amt .strike { color: #9fb3c4; font-size: 1.1rem; margin-right: 4px; }

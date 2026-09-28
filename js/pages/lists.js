@@ -1,7 +1,7 @@
 /* Pages publiques : véhicules en fourrière et véhicules à vendre (recherche en direct). */
 import { h, icon, badge, empty, loading, toast, busy, debounce } from '../lib/ui.js';
 import * as api from '../lib/api.js';
-import { plateEl, colorTag, photoBlock, meta, meter } from '../lib/cards.js';
+import { plateEl, colorTag, photoBlock, meta, meter, saleMeter } from '../lib/cards.js';
 import { dt, norm, plateKey, money } from '../lib/format.js';
 
 export const impoundPage = (ctx) => listPage(ctx, false);
@@ -21,7 +21,7 @@ async function listPage(ctx, sale) {
     const pk = plateKey(q);
     return (!sale && pk.length > 0 && plateKey(v.plate).includes(pk)) || norm(v.model).includes(nq) || norm(v.color).includes(nq) || (sale && norm(v.description).includes(nq));
   };
-  const amount = (v) => Number(sale ? v.price : v.total_amount);
+  const amount = (v) => Number(sale ? (v.effective_price ?? v.price) : v.total_amount);
 
   function card(v, i) {
     const existing = mine.get(v.id);
@@ -37,7 +37,7 @@ async function listPage(ctx, sale) {
           ? [['Couleur', colorTag(v.color)], ['En vente depuis', dt(v.listed_at)]]
           : [['Couleur', colorTag(v.color)], ['Arrivée', dt(v.created_at)], ['Jours en fourrière', String(v.days_in_impound)]]),
         sale ? h('p', { class: 'vdesc' }, v.description) : null,
-        meter(sale ? 'Prix de vente' : `Montant à régler · jour ${v.days_in_impound}`, sale ? v.price : v.total_amount),
+        sale ? saleMeter(v.price, v.promo_percent, v.effective_price) : meter(`Montant à régler · jour ${v.days_in_impound}`, v.total_amount),
         button));
   }
   function render() {

@@ -47,6 +47,33 @@ export default async function staffPage() {
     root.replaceChildren(tbl, past);
   }
 
+  /* ---------------- Comptes des forces de l'ordre : consultation des saisies uniquement ---------------- */
+  const policeBox = manager ? h('div', {}, loading()) : null;
+  async function loadPolice() {
+    const rows = await api.policeAccounts();
+    policeBox.replaceChildren(rows.length ? h('div', { class: 'table-wrap' }, h('table', { class: 'table stackable' },
+      h('thead', {}, h('tr', {}, ['Nom', 'Prénom', 'Créé le', 'Dernière connexion', ''].map((t) => h('th', {}, t)))),
+      h('tbody', {}, rows.map((p) => h('tr', {}, h('td', { 'data-label': 'Nom' }, h('strong', {}, p.nom)), h('td', { 'data-label': 'Prénom' }, p.prenom),
+        h('td', { 'data-label': 'Créé le' }, dateOnly(p.created_at)), h('td', { 'data-label': 'Dernière connexion' }, p.last_seen_at ? rel(p.last_seen_at) : 'Jamais'),
+        h('td', { class: 'actions', 'data-label': '' }, h('div', { class: 'row', style: { justifyContent: 'flex-end', gap: '6px' } },
+          btn('Mot de passe', { sm: true, kind: 'secondary', ic: 'key', onClick: () => { const pw = h('input', { class: 'input', id: 'ppw', type: 'text', autocomplete: 'off', value: randomPassword(), maxlength: '72' });
+            const go = btn('Réinitialiser', { onClick: () => busy(go, async () => { await api.staffResetPassword(p.id, pw.value); m.close(); credentialsModal('Mot de passe réinitialisé', [`Nouveau mot de passe de ${p.prenom} ${p.nom} :`, pw.value]); }) });
+            const m = openModal({ title: 'Réinitialiser le mot de passe', body: field('Nouveau mot de passe', pw), actions: [btn('Annuler', { kind: 'secondary', onClick: () => m.close() }), go] }); } }),
+          btn('Retirer l\'accès', { sm: true, kind: 'danger', onClick: async () => {
+            if (await confirmDialog({ title: `Retirer l'accès de ${p.prenom} ${p.nom} ?`, message: 'Ce compte redevient un simple client et perd tout accès aux saisies.', confirmLabel: 'Retirer', danger: true })) { try { await api.revokePolice(p.id); toast('Accès retiré.', 'ok'); await loadPolice(); } catch (e) { toast(e.message, 'error'); } } } }))))))))
+      : empty('Aucun compte', 'Ajoutez-en un avec le formulaire ci-dessus.'));
+  }
+  function addPoliceModal() {
+    const nom = h('input', { class: 'input', id: 'p-nom', maxlength: '40', autocomplete: 'off' }); const prenom = h('input', { class: 'input', id: 'p-prenom', maxlength: '40', autocomplete: 'off' });
+    const pw = h('input', { class: 'input', id: 'p-pw', type: 'text', autocomplete: 'off', value: randomPassword(), maxlength: '72' });
+    const go = btn('Créer le compte', { onClick: () => busy(go, async () => {
+      const r = await api.createPoliceAccount(nom.value.trim(), prenom.value.trim(), pw.value); m.close(); await loadPolice();
+      credentialsModal('Compte créé', [`${prenom.value.trim()} ${nom.value.trim()} — Forces de l'ordre`, `Mot de passe : ${pw.value}`], r.recovery_code); }) });
+    const m = openModal({ title: 'Nouveau compte forces de l\'ordre', body: h('div', { class: 'stack' },
+      h('p', { class: 'muted' }, 'Ce compte ne voit que la page des saisies : aucun accès aux véhicules, conversations ou personnel de la fourrière.'),
+      h('div', { class: 'form-grid' }, field('Nom RP', nom), field('Prénom RP', prenom), h('div', { class: 'full' }, field('Mot de passe provisoire', pw)))),
+      actions: [btn('Annuler', { kind: 'secondary', onClick: () => m.close() }), go] });
+  }
   function addModal() {
     let tab = 'new'; const body = h('div', {}); const foot = h('div', { class: 'row', style: { display: 'contents' } });
     const m = openModal({ title: 'Ajouter un membre du personnel', wide: true, body, actions: [] });
@@ -75,7 +102,15 @@ export default async function staffPage() {
     }
     paint();
   }
+
+  if (manager) await loadPolice();
+
+  const el2 = manager ? h('section', { class: 'stack' }, h('div', { class: 'row between' },
+    h('h2', {}, 'Comptes forces de l\'ordre'), h('button', { class: 'btn secondary', type: 'button', onClick: addPoliceModal }, icon('plus'), 'Ajouter un compte')),
+    h('p', { class: 'muted' }, 'Ces comptes consultent uniquement le registre des saisies (page « Saisies »), pour savoir si un véhicule a été saisi. Ils n\'ont aucun accès à la fourrière.'),
+    policeBox) : null;
+
   await load();
   const un = api.watch([{ table: 'staff' }], () => reload(), 600);
-  return { el, destroy: un };
+  return { el: h('div', { class: 'stack-lg' }, el, el2), destroy: un };
 }
