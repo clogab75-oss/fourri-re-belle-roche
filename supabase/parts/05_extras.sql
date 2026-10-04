@@ -306,6 +306,51 @@ begin
     format('%s a retiré l''accès forces de l''ordre de %s %s', private.display_name(v_uid), v_p.prenom, v_p.nom));
 end $$;
 
+-- Nomme un compte client existant comme forces de l'ordre (sans passer par le personnel de la fourrière).
+create or replace function public.recruit_police_existing(p_user_id uuid) returns void
+language plpgsql security definer set search_path = public, private as $$
+declare v_uid uuid := private.require_manager(); v_t public.profiles;
+begin
+  select * into v_t from public.profiles where id = p_user_id for update;
+  if not found then raise exception 'Compte introuvable.'; end if;
+  if v_t.role <> 'client' then raise exception 'Cette personne n''est pas un simple compte client.'; end if;
+  update public.profiles set role = 'forces_ordre' where id = p_user_id;
+  perform private.log_action('police.recruit', 'profile', p_user_id, null,
+    format('%s a donné l''accès forces de l''ordre à %s %s', private.display_name(v_uid), v_t.prenom, v_t.nom));
+  perform private.notify_user(p_user_id, 'staff', 'Accès forces de l''ordre',
+    'Vous pouvez désormais consulter le registre des saisies.', '#/saisies');
+end $$;
+
+-- =====================================================================
+--  REMETTRE EN VENTE APRÈS UNE VENTE (l'acheteur se rétracte, par exemple).
+--  Ne modifie jamais la vente déjà conclue : une nouvelle annonce est créée.
+-- =====================================================================
+create or replace function public.relist_after_sale(
+  p_vehicle_id uuid, p_price numeric default null, p_description text default null, p_promo_percent integer default null)
+returns void
+language plpgsql security definer set search_path = public, private as $$
+declare
+  v_uid uuid := private.require_manager(); v_name text := private.display_name(v_uid);
+  v_v public.vehicles; v_last public.vehicle_sales; v_price numeric; v_desc text;
+begin
+  select * into v_v from public.vehicles where id = p_vehicle_id for update;
+  if not found then raise exception 'Véhicule introuvable.'; end if;
+  if v_v.status <> 'vendue' then raise exception 'Seul un véhicule vendu peut être remis en vente.'; end if;
+  select * into v_last from public.vehicle_sales where vehicle_id = p_vehicle_id and status = 'vendue' order by sold_at desc limit 1;
+  v_price := coalesce(p_price, v_last.price); v_desc := coalesce(nullif(btrim(coalesce(p_description, '')), ''), v_last.description);
+  if v_price is null or v_price <= 0 or v_price > 1000000000 then raise exception 'Indiquez un prix de vente valide.'; end if;
+  if v_desc is null or char_length(v_desc) < 3 then raise exception 'Ajoutez une description.'; end if;
+  if p_promo_percent is not null and p_promo_percent not between 1 and 99 then
+    raise exception 'La promotion affichée doit être comprise entre 1 et 99 %%.';
+  end if;
+  insert into public.vehicle_sales (vehicle_id, price, description, promo_percent, listed_by, listed_by_name)
+  values (p_vehicle_id, v_price, v_desc, p_promo_percent, v_uid, v_name);
+  update public.vehicles set status = 'a_vendre', status_changed_at = now(), updated_by = v_uid, updated_by_name = v_name where id = p_vehicle_id;
+  perform private.log_action('sale.relist', 'vehicle', p_vehicle_id, p_vehicle_id,
+    format('%s a remis en vente %s (%s, %s) à %s', v_name, v_v.plate, v_v.model, v_v.color, private.fmt_money(v_price)),
+    jsonb_build_object('price', v_price));
+end $$;
+
 -- =====================================================================
 --  SAISIES (créées par le personnel de la fourrière, suivies par tous les deux)
 -- =====================================================================

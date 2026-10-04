@@ -192,8 +192,8 @@ declare
     'remove_conversation_discount', 'list_discount_codes', 'list_discount_redemptions',
     'create_sale_option', 'set_sale_option_active', 'delete_sale_option', 'list_sale_options', 'active_sale_options',
     'set_planned_sale', 'buy_vehicle_now', 'admin_force_for_sale',
-    'create_police_account', 'list_police_accounts', 'revoke_police_account',
-    'create_seizure', 'mark_seizure_recovered', 'delete_seizure', 'get_seizure_stats'];
+    'create_police_account', 'list_police_accounts', 'revoke_police_account', 'recruit_police_existing',
+    'create_seizure', 'mark_seizure_recovered', 'delete_seizure', 'get_seizure_stats', 'relist_after_sale'];
 begin
   for r in select p.oid::regprocedure as sig, p.proname
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace

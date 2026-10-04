@@ -102,3 +102,25 @@ export async function soldModal(v, saleConvs, onDone) {
     h('div', { class: 'field' }, h('span', { class: 'label' }, 'Options'), optionsEl), field('Prix final (€)', price), hint),
     actions: [btn('Annuler', { kind: 'secondary', onClick: () => m.close() }), go] });
 }
+
+/* Remettre en vente un véhicule déjà vendu (l'acheteur se rétracte, par exemple).
+   Une nouvelle annonce est créée ; la vente précédente reste inchangée dans l'historique. */
+export function relistModal(v, onDone) {
+  const price = h('input', { class: 'input', id: 'rl-price', type: 'number', min: '1', step: '1', required: true, value: String(Math.round(v.sale_price || v.sold_price || 0)) });
+  const desc = h('textarea', { class: 'input', id: 'rl-desc', maxlength: '2000', rows: '5' }, v.sale_description || '');
+  const promo = h('input', { class: 'input', id: 'rl-promo', type: 'number', min: '1', max: '99', step: '1', placeholder: 'Aucune' });
+  const preview = h('p', { class: 'small' });
+  const paintPreview = () => { const p = Number(price.value); const pc = Number(promo.value);
+    preview.replaceChildren(pc >= 1 && pc <= 99 && p > 0 ? [h('s', { class: 'strike' }, money(p)), ' → ', h('strong', {}, money(Math.round(p * (100 - pc) / 100)))] : ''); };
+  price.addEventListener('input', paintPreview); promo.addEventListener('input', paintPreview); paintPreview();
+  const go = btn('Remettre en vente', { kind: 'amber', onClick: () => busy(go, async () => {
+    const p = Number(price.value); const d = desc.value.trim(); const pc = promo.value.trim() ? Number(promo.value) : null;
+    if (!(p > 0)) throw new Error('Indiquez un prix de vente valide.');
+    if (d.length < 3) throw new Error('Ajoutez une description.');
+    await api.relistAfterSale(v.id, p, d, pc); toast('Véhicule remis en vente.', 'ok'); m.close(); onDone();
+  }) });
+  const m = openModal({ title: `Remettre en vente · ${v.model}`, wide: true,
+    body: h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'La vente précédente reste conservée dans l\'historique ; une nouvelle annonce est créée.'),
+      field('Prix de vente (€)', price), field('Description', desc), field('Promotion affichée (%, facultatif)', promo), preview),
+    actions: [btn('Annuler', { kind: 'secondary', onClick: () => m.close() }), go] });
+}

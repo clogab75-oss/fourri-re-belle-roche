@@ -4,7 +4,7 @@ import * as api from '../lib/api.js';
 import { adminLayout, pageHead } from '../lib/layout.js';
 import { plateEl, colorTag, photoBlock, meta, meter } from '../lib/cards.js';
 import { money, dt } from '../lib/format.js';
-import { saleModal, soldModal } from '../lib/actions.js';
+import { saleModal, soldModal, relistModal } from '../lib/actions.js';
 
 /* Prépare (ou modifie) le prix de vente d'un véhicule encore en fourrière : rien n'est publié
    tant que le délai de 7 jours n'est pas atteint sans réclamation. */
@@ -63,7 +63,8 @@ export default async function sales() {
     const hist = h('section', { class: 'stack' }, h('h2', {}, `Ventes réalisées (${sold.length})`),
       sold.length ? h('section', { class: 'card' }, h('div', { class: 'table-wrap' }, h('table', { class: 'table stackable' }, h('thead', {}, h('tr', {}, ['Véhicule', 'Acheteur', 'Prix', 'Date', ''].map((t) => h('th', {}, t)))),
         h('tbody', {}, sold.map((v) => h('tr', {}, h('td', { 'data-label': 'Véhicule' }, h('strong', {}, `${v.model} · ${v.plate}`)), h('td', { 'data-label': 'Acheteur' }, v.buyer_name || '—'), h('td', { 'data-label': 'Prix', class: 'num' }, money(v.sold_price)),
-          h('td', { 'data-label': 'Date' }, dt(v.sold_at)), h('td', { class: 'actions', 'data-label': '' }, h('a', { class: 'btn secondary sm', href: '#/admin/vehicules/' + v.id }, 'Fiche'))))))))
+          h('td', { 'data-label': 'Date' }, dt(v.sold_at)), h('td', { class: 'actions', 'data-label': '' }, h('div', { class: 'row', style: { justifyContent: 'flex-end', gap: '6px' } },
+            btn('Remettre en vente', { sm: true, kind: 'secondary', onClick: () => relistModal(v, done) }), h('a', { class: 'btn secondary sm', href: '#/admin/vehicules/' + v.id }, 'Fiche')))))))))
         : h('div', { class: 'card' }, empty('Aucune vente', 'Les ventes clôturées apparaîtront ici.')));
     root.replaceChildren(planned, wait, live, hist);
   }

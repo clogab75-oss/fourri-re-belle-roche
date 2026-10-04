@@ -387,6 +387,14 @@ create table if not exists public.sale_options (
   created_by_name text,
   created_at      timestamptz not null default now()
 );
+-- Répare une table déjà présente mais incomplète (ex. essai précédent interrompu) :
+-- "create table if not exists" ne touche pas une table qui existe déjà, même incomplète.
+alter table public.sale_options add column if not exists label text;
+alter table public.sale_options add column if not exists price numeric(12, 2);
+alter table public.sale_options add column if not exists active boolean not null default true;
+alter table public.sale_options add column if not exists created_by uuid references public.profiles (id) on delete set null;
+alter table public.sale_options add column if not exists created_by_name text;
+alter table public.sale_options add column if not exists created_at timestamptz not null default now();
 create unique index if not exists sale_options_label_uidx on public.sale_options (lower(btrim(label)));
 
 -- Saisies des forces de l'ordre : simple registre, sans lien avec la facturation de la fourrière.
@@ -405,6 +413,20 @@ create table if not exists public.seizures (
   recovered_by_name text,
   recovered_at      timestamptz
 );
+-- Même réparation que ci-dessus, au cas où la table existerait déjà sous une forme incomplète.
+alter table public.seizures add column if not exists plate text;
+alter table public.seizures add column if not exists plate_key text;
+alter table public.seizures add column if not exists model text;
+alter table public.seizures add column if not exists color text;
+alter table public.seizures add column if not exists agency text;
+alter table public.seizures add column if not exists status text not null default 'en_cours';
+alter table public.seizures add column if not exists created_by uuid references public.profiles (id) on delete set null;
+alter table public.seizures add column if not exists created_by_name text;
+alter table public.seizures add column if not exists created_at timestamptz not null default now();
+alter table public.seizures add column if not exists recovered_by uuid references public.profiles (id) on delete set null;
+alter table public.seizures add column if not exists recovered_by_name text;
+alter table public.seizures add column if not exists recovered_at timestamptz;
+update public.seizures set plate_key = regexp_replace(upper(btrim(plate)), '[^A-Z0-9]', '', 'g') where plate_key is null and plate is not null;
 create unique index if not exists seizures_open_plate_uidx on public.seizures (plate_key) where status = 'en_cours';
 create index if not exists seizures_status_idx on public.seizures (status, created_at desc);
 
@@ -2518,6 +2540,51 @@ begin
     format('%s a retiré l''accès forces de l''ordre de %s %s', private.display_name(v_uid), v_p.prenom, v_p.nom));
 end $$;
 
+-- Nomme un compte client existant comme forces de l'ordre (sans passer par le personnel de la fourrière).
+create or replace function public.recruit_police_existing(p_user_id uuid) returns void
+language plpgsql security definer set search_path = public, private as $$
+declare v_uid uuid := private.require_manager(); v_t public.profiles;
+begin
+  select * into v_t from public.profiles where id = p_user_id for update;
+  if not found then raise exception 'Compte introuvable.'; end if;
+  if v_t.role <> 'client' then raise exception 'Cette personne n''est pas un simple compte client.'; end if;
+  update public.profiles set role = 'forces_ordre' where id = p_user_id;
+  perform private.log_action('police.recruit', 'profile', p_user_id, null,
+    format('%s a donné l''accès forces de l''ordre à %s %s', private.display_name(v_uid), v_t.prenom, v_t.nom));
+  perform private.notify_user(p_user_id, 'staff', 'Accès forces de l''ordre',
+    'Vous pouvez désormais consulter le registre des saisies.', '#/saisies');
+end $$;
+
+-- =====================================================================
+--  REMETTRE EN VENTE APRÈS UNE VENTE (l'acheteur se rétracte, par exemple).
+--  Ne modifie jamais la vente déjà conclue : une nouvelle annonce est créée.
+-- =====================================================================
+create or replace function public.relist_after_sale(
+  p_vehicle_id uuid, p_price numeric default null, p_description text default null, p_promo_percent integer default null)
+returns void
+language plpgsql security definer set search_path = public, private as $$
+declare
+  v_uid uuid := private.require_manager(); v_name text := private.display_name(v_uid);
+  v_v public.vehicles; v_last public.vehicle_sales; v_price numeric; v_desc text;
+begin
+  select * into v_v from public.vehicles where id = p_vehicle_id for update;
+  if not found then raise exception 'Véhicule introuvable.'; end if;
+  if v_v.status <> 'vendue' then raise exception 'Seul un véhicule vendu peut être remis en vente.'; end if;
+  select * into v_last from public.vehicle_sales where vehicle_id = p_vehicle_id and status = 'vendue' order by sold_at desc limit 1;
+  v_price := coalesce(p_price, v_last.price); v_desc := coalesce(nullif(btrim(coalesce(p_description, '')), ''), v_last.description);
+  if v_price is null or v_price <= 0 or v_price > 1000000000 then raise exception 'Indiquez un prix de vente valide.'; end if;
+  if v_desc is null or char_length(v_desc) < 3 then raise exception 'Ajoutez une description.'; end if;
+  if p_promo_percent is not null and p_promo_percent not between 1 and 99 then
+    raise exception 'La promotion affichée doit être comprise entre 1 et 99 %%.';
+  end if;
+  insert into public.vehicle_sales (vehicle_id, price, description, promo_percent, listed_by, listed_by_name)
+  values (p_vehicle_id, v_price, v_desc, p_promo_percent, v_uid, v_name);
+  update public.vehicles set status = 'a_vendre', status_changed_at = now(), updated_by = v_uid, updated_by_name = v_name where id = p_vehicle_id;
+  perform private.log_action('sale.relist', 'vehicle', p_vehicle_id, p_vehicle_id,
+    format('%s a remis en vente %s (%s, %s) à %s', v_name, v_v.plate, v_v.model, v_v.color, private.fmt_money(v_price)),
+    jsonb_build_object('price', v_price));
+end $$;
+
 -- =====================================================================
 --  SAISIES (créées par le personnel de la fourrière, suivies par tous les deux)
 -- =====================================================================
@@ -3544,8 +3611,8 @@ declare
     'remove_conversation_discount', 'list_discount_codes', 'list_discount_redemptions',
     'create_sale_option', 'set_sale_option_active', 'delete_sale_option', 'list_sale_options', 'active_sale_options',
     'set_planned_sale', 'buy_vehicle_now', 'admin_force_for_sale',
-    'create_police_account', 'list_police_accounts', 'revoke_police_account',
-    'create_seizure', 'mark_seizure_recovered', 'delete_seizure', 'get_seizure_stats'];
+    'create_police_account', 'list_police_accounts', 'revoke_police_account', 'recruit_police_existing',
+    'create_seizure', 'mark_seizure_recovered', 'delete_seizure', 'get_seizure_stats', 'relist_after_sale'];
 begin
   for r in select p.oid::regprocedure as sig, p.proname
              from pg_proc p join pg_namespace n on n.oid = p.pronamespace

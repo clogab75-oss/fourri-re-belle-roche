@@ -5,7 +5,7 @@ import { adminLayout, pageHead } from '../lib/layout.js';
 import { plateEl, colorTag, pathsOf } from '../lib/cards.js';
 import { money, dt, rel, norm, plateKey } from '../lib/format.js';
 import { photoPicker } from '../lib/photopicker.js';
-import { recoveredModal, saleModal, soldModal } from '../lib/actions.js';
+import { recoveredModal, saleModal, soldModal, relistModal } from '../lib/actions.js';
 import { plannedModal } from './admin-sales.js';
 import { lightbox } from '../lib/ui.js';
 
@@ -149,6 +149,7 @@ export async function detail({ params, navigate }) {
     if (manager && v.status === 'a_vendre') A.push(btn("Modifier l'annonce", { kind: 'secondary', ic: 'edit', onClick: () => saleModal(v, reload, true) }), btn('Marquer comme vendu', { ic: 'check', onClick: () => soldModal(v, saleConvs, reload) }),
       btn('Retirer de la vente', { kind: 'secondary', onClick: async () => { if (await confirmDialog({ title: 'Retirer de la vente ?', message: 'Le véhicule repasse en attente de mise en vente et les conversations d\'achat sont fermées.', confirmLabel: 'Retirer' })) { try { await api.withdrawSale(id); toast('Annonce retirée.', 'ok'); reload(); } catch (e) { toast(e.message, 'error'); } } } }));
     if (manager && ['recuperee', 'vendue'].includes(v.status)) A.push(btn('Archiver', { kind: 'secondary', ic: 'archive', onClick: async () => { try { await api.archive(id); toast('Véhicule archivé.', 'ok'); reload(); } catch (e) { toast(e.message, 'error'); } } }));
+    if (manager && v.status === 'vendue') A.push(btn('Remettre en vente', { kind: 'amber', ic: 'tag', onClick: () => relistModal(v, reload) }));
     if (manager && v.status === 'archivee') A.push(btn('Désarchiver', { kind: 'secondary', ic: 'archive', onClick: async () => { try { await api.unarchive(id); toast('Véhicule désarchivé.', 'ok'); reload(); } catch (e) { toast(e.message, 'error'); } } }));
     A.push(btn('Supprimer', { kind: 'danger', ic: 'trash', onClick: async () => {
       if (!(await confirmDialog({ title: 'Supprimer ce véhicule ?', message: `La fiche ${v.plate}, ses photos et ses conversations seront supprimées définitivement. L'action est enregistrée dans l'historique.`, confirmLabel: 'Supprimer définitivement', danger: true }))) return;

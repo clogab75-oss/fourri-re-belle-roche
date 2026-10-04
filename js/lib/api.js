@@ -162,11 +162,13 @@ export const deleteSaleOption = (id) => rpc('delete_sale_option', { p_id: id });
 export const setPlannedSale = (id, price, description) => rpc('set_planned_sale', { p_vehicle_id: id, p_price: price, p_description: description });
 export const buyNow = (convId, optionIds) => rpc('buy_vehicle_now', { p_conversation_id: convId, p_option_ids: optionIds || [] });
 export const forceForSale = (id) => rpc('admin_force_for_sale', { p_vehicle_id: id });
+export const relistAfterSale = (id, price, description, promoPercent) => rpc('relist_after_sale', { p_vehicle_id: id, p_price: price ?? null, p_description: description || null, p_promo_percent: promoPercent ?? null });
 
 /* ---------- Forces de l'ordre et saisies ---------- */
 export const createPoliceAccount = (nom, prenom, password) => rpc('create_police_account', { p_nom: nom, p_prenom: prenom, p_password: password });
 export const policeAccounts = () => rpc('list_police_accounts');
 export const revokePolice = (id) => rpc('revoke_police_account', { p_id: id });
+export const recruitPolice = (id) => rpc('recruit_police_existing', { p_user_id: id });
 export const seizures = () => q(sb.from('seizures').select('*').order('created_at', { ascending: false }).limit(500));
 export const createSeizure = (plate, model, color, agency) => rpc('create_seizure', { p_plate: plate, p_model: model, p_color: color, p_agency: agency });
 export const recoverSeizure = (id) => rpc('mark_seizure_recovered', { p_id: id });

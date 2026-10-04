@@ -64,15 +64,34 @@ export default async function staffPage() {
       : empty('Aucun compte', 'Ajoutez-en un avec le formulaire ci-dessus.'));
   }
   function addPoliceModal() {
-    const nom = h('input', { class: 'input', id: 'p-nom', maxlength: '40', autocomplete: 'off' }); const prenom = h('input', { class: 'input', id: 'p-prenom', maxlength: '40', autocomplete: 'off' });
-    const pw = h('input', { class: 'input', id: 'p-pw', type: 'text', autocomplete: 'off', value: randomPassword(), maxlength: '72' });
-    const go = btn('Créer le compte', { onClick: () => busy(go, async () => {
-      const r = await api.createPoliceAccount(nom.value.trim(), prenom.value.trim(), pw.value); m.close(); await loadPolice();
-      credentialsModal('Compte créé', [`${prenom.value.trim()} ${nom.value.trim()} — Forces de l'ordre`, `Mot de passe : ${pw.value}`], r.recovery_code); }) });
-    const m = openModal({ title: 'Nouveau compte forces de l\'ordre', body: h('div', { class: 'stack' },
-      h('p', { class: 'muted' }, 'Ce compte ne voit que la page des saisies : aucun accès aux véhicules, conversations ou personnel de la fourrière.'),
-      h('div', { class: 'form-grid' }, field('Nom RP', nom), field('Prénom RP', prenom), h('div', { class: 'full' }, field('Mot de passe provisoire', pw)))),
-      actions: [btn('Annuler', { kind: 'secondary', onClick: () => m.close() }), go] });
+    let tab = 'new'; const body = h('div', {});
+    const m = openModal({ title: 'Ajouter un compte forces de l\'ordre', wide: true, body, actions: [] });
+    const tabs = h('div', { class: 'tabs', role: 'tablist' }, [['new', 'Nouveau compte'], ['old', 'Compte existant']].map(([k, l]) =>
+      h('button', { class: 'tab', role: 'tab', type: 'button', 'aria-selected': String(k === tab), dataset: { k }, onClick: () => { tab = k; [...tabs.children].forEach((b) => b.setAttribute('aria-selected', String(b.dataset.k === k))); paint(); } }, l)));
+    function paint() { body.replaceChildren(tabs, tab === 'new' ? formNew() : formOld()); }
+    function formNew() {
+      const nom = h('input', { class: 'input', id: 'p-nom', maxlength: '40', autocomplete: 'off' }); const prenom = h('input', { class: 'input', id: 'p-prenom', maxlength: '40', autocomplete: 'off' });
+      const pw = h('input', { class: 'input', id: 'p-pw', type: 'text', autocomplete: 'off', value: randomPassword(), maxlength: '72' });
+      const go = btn('Créer le compte', { onClick: () => busy(go, async () => {
+        const r = await api.createPoliceAccount(nom.value.trim(), prenom.value.trim(), pw.value); m.close(); await loadPolice();
+        credentialsModal('Compte créé', [`${prenom.value.trim()} ${nom.value.trim()} — Forces de l'ordre`, `Mot de passe : ${pw.value}`], r.recovery_code); }) });
+      return h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Ce compte ne voit que la page des saisies : aucun accès aux véhicules, conversations ou personnel de la fourrière.'),
+        h('div', { class: 'form-grid' }, field('Nom RP', nom), field('Prénom RP', prenom), h('div', { class: 'full' }, field('Mot de passe provisoire', pw))),
+        h('div', { class: 'row', style: { justifyContent: 'flex-end' } }, go));
+    }
+    function formOld() {
+      const q = h('input', { class: 'input', id: 'po-q', type: 'search', placeholder: 'Rechercher un nom ou un prénom (2 lettres minimum)', autocomplete: 'off' });
+      const out = h('div', { class: 'stack' });
+      q.addEventListener('input', debounce(async () => {
+        try { const list = await api.searchClients(q.value);
+          out.replaceChildren(...(list.length ? list.map((p) => h('div', { class: 'row between card card-pad', style: { padding: '10px 14px' } }, h('strong', {}, `${p.prenom} ${p.nom}`),
+            btn('Nommer', { sm: true, onClick: async () => { try { await api.recruitPolice(p.id); toast('Accès forces de l\'ordre donné.', 'ok'); m.close(); await loadPolice(); } catch (e) { toast(e.message, 'error'); } } })))
+            : [h('p', { class: 'muted' }, q.value.trim().length < 2 ? '' : 'Aucun compte client trouvé.')]));
+        } catch (e) { toast(e.message, 'error'); }
+      }, 250));
+      return h('div', { class: 'stack' }, field('Compte à nommer', q), out, h('p', { class: 'hint' }, 'Seuls les comptes clients apparaissent.'));
+    }
+    paint();
   }
   function addModal() {
     let tab = 'new'; const body = h('div', {}); const foot = h('div', { class: 'row', style: { display: 'contents' } });

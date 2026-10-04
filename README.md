@@ -32,9 +32,11 @@ Site web complet pour une fourrière : les visiteurs retrouvent leur véhicule e
 
 **Tarification anticipée** : dans *Ventes → Tarification anticipée* (ou sur la fiche du véhicule), un gérant prépare le prix de vente d'un véhicule dès son arrivée. À l'échéance sans réclamation, il passe **directement en vente** avec ce prix ; sans prix préparé, il rejoint l'attente habituelle.
 
+**Remettre en vente** : si un acheteur se rétracte, un gérant peut remettre en vente un véhicule déjà vendu (fiche du véhicule ou page *Ventes*) : une nouvelle annonce est créée, l'ancienne vente reste dans l'historique.
+
 **Mise en vente forcée** : sur la fiche d'un véhicule en fourrière, **l'administrateur seul** voit « Mettre en vente maintenant » pour ne pas attendre le délai (refusé si une demande de récupération est en cours).
 
-**Forces de l'ordre et saisies** : un gérant crée des comptes « forces de l'ordre » (*Personnel*). Ils n'ont accès qu'à la page **Saisies** (plaque, modèle, couleur, police ou gendarmerie), avec un bouton « Récupérée » et leurs propres statistiques, séparées de celles de la fourrière. Le personnel de la fourrière enregistre les saisies ; ces comptes n'ont aucun accès aux véhicules, conversations ou personnel.
+**Forces de l'ordre et saisies** : un gérant crée des comptes « forces de l'ordre » (*Personnel*, nouveau compte ou compte client existant). Ils n'ont accès qu'à la page **Saisies** (plaque, modèle, couleur, police ou gendarmerie), avec un bouton « Récupérée » et leurs propres statistiques, séparées de celles de la fourrière. Le personnel de la fourrière enregistre les saisies ; ces comptes n'ont aucun accès aux véhicules, conversations ou personnel.
 
 **Automatique** : à **7 jours** (modifiable) sans réclamation active, un véhicule passe en « En attente de mise en vente », visible **uniquement des gérants et de l'administrateur**.
 
@@ -58,7 +60,8 @@ Site web complet pour une fourrière : les visiteurs retrouvent leur véhicule e
 | Mettre en vente maintenant (sans attendre le délai) | | | | ✅ |
 | Enregistrer une saisie | | ✅ | ✅ | ✅ |
 | Consulter / clôturer les saisies, leurs statistiques | Forces de l'ordre ✅ | ✅ | ✅ | ✅ |
-| Créer un compte forces de l'ordre | | | ✅ | ✅ |
+| Créer un compte forces de l'ordre (nouveau ou existant) | | | ✅ | ✅ |
+| Remettre en vente un véhicule déjà vendu | | | ✅ | ✅ |
 | Saisir un code promo dans une conversation | ✅ (la sienne) | ✅ | ✅ | ✅ |
 | Retirer un code promo d'une conversation | | | ✅ | ✅ |
 | Statistiques de base | | ✅ | ✅ | ✅ |

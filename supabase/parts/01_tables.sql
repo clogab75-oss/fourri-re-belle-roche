@@ -380,6 +380,14 @@ create table if not exists public.sale_options (
   created_by_name text,
   created_at      timestamptz not null default now()
 );
+-- Répare une table déjà présente mais incomplète (ex. essai précédent interrompu) :
+-- "create table if not exists" ne touche pas une table qui existe déjà, même incomplète.
+alter table public.sale_options add column if not exists label text;
+alter table public.sale_options add column if not exists price numeric(12, 2);
+alter table public.sale_options add column if not exists active boolean not null default true;
+alter table public.sale_options add column if not exists created_by uuid references public.profiles (id) on delete set null;
+alter table public.sale_options add column if not exists created_by_name text;
+alter table public.sale_options add column if not exists created_at timestamptz not null default now();
 create unique index if not exists sale_options_label_uidx on public.sale_options (lower(btrim(label)));
 
 -- Saisies des forces de l'ordre : simple registre, sans lien avec la facturation de la fourrière.
@@ -398,5 +406,19 @@ create table if not exists public.seizures (
   recovered_by_name text,
   recovered_at      timestamptz
 );
+-- Même réparation que ci-dessus, au cas où la table existerait déjà sous une forme incomplète.
+alter table public.seizures add column if not exists plate text;
+alter table public.seizures add column if not exists plate_key text;
+alter table public.seizures add column if not exists model text;
+alter table public.seizures add column if not exists color text;
+alter table public.seizures add column if not exists agency text;
+alter table public.seizures add column if not exists status text not null default 'en_cours';
+alter table public.seizures add column if not exists created_by uuid references public.profiles (id) on delete set null;
+alter table public.seizures add column if not exists created_by_name text;
+alter table public.seizures add column if not exists created_at timestamptz not null default now();
+alter table public.seizures add column if not exists recovered_by uuid references public.profiles (id) on delete set null;
+alter table public.seizures add column if not exists recovered_by_name text;
+alter table public.seizures add column if not exists recovered_at timestamptz;
+update public.seizures set plate_key = regexp_replace(upper(btrim(plate)), '[^A-Z0-9]', '', 'g') where plate_key is null and plate is not null;
 create unique index if not exists seizures_open_plate_uidx on public.seizures (plate_key) where status = 'en_cours';
 create index if not exists seizures_status_idx on public.seizures (status, created_at desc);

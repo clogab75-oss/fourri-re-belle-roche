@@ -51,6 +51,9 @@ export default async function messagesPage(ctx) {
   const promo = h('div', {});
   const buyBox = h('div', {});
   const foot = h('div', {});
+  const composerBox = h('div', { class: 'composer' }, ta, sendBtn);
+  const closedNote = h('div', { class: 'closed-note' });
+  foot.append(composerBox, closedNote);
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 140) + 'px'; };
   ta.addEventListener('input', grow);
   ta.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
@@ -144,9 +147,8 @@ export default async function messagesPage(ctx) {
           if (await confirmDialog({ title: 'Supprimer définitivement ?', message: 'La conversation et tous ses messages seront effacés. Cette action est irréversible.', confirmLabel: 'Supprimer', danger: true })) {
             try { await api.deleteConversation(conv.id); toast('Conversation supprimée.', 'ok'); selected = null; conv = null; history.pushState(null, '', '#/messages'); await refreshAll(); } catch (e) { toast(e.message, 'error'); }
           } } }) : null));
-    foot.replaceChildren(conv.status === 'ouverte'
-      ? h('div', { class: 'composer' }, ta, sendBtn)
-      : h('div', { class: 'closed-note' }, `Conversation fermée ${conv.closed_by_name ? 'par ' + conv.closed_by_name + ' ' : ''}${rel(conv.closed_at)}. Elle reste consultable.`));
+    { const open = conv.status === 'ouverte'; composerBox.hidden = !open; closedNote.hidden = open;
+      if (!open) closedNote.textContent = `Conversation fermée ${conv.closed_by_name ? 'par ' + conv.closed_by_name + ' ' : ''}${rel(conv.closed_at)}. Elle reste consultable.`; }
   }
   function paintMsgs(forceBottom) {
     const sig = msgs.length + ':' + (msgs.length ? msgs[msgs.length - 1].id : '');
