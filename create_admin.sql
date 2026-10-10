@@ -1,0 +1,12 @@
+-- =====================================================================
+--  CRÉATION DU COMPTE ADMINISTRATEUR : Gabin Muller
+--
+--  1. Remplacez  CHOISISSEZ_VOTRE_MOT_DE_PASSE  par votre mot de passe
+--     (8 à 72 caractères). Ne l'écrivez jamais dans GitHub.
+--  2. Cliquez sur « Run ».
+--  3. Notez le code de récupération affiché dans le résultat.
+--
+--  Cette fonction ne fonctionne qu'ici, dans le SQL Editor de Supabase :
+--  personne ne peut l'appeler depuis le site.
+-- =====================================================================
+select public.bootstrap_main_admin('CHOISISSEZ_VOTRE_MOT_DE_PASSE');
