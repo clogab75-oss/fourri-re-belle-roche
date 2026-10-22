@@ -14,6 +14,33 @@
 
 create extension if not exists pgcrypto with schema extensions;
 
+-- ---------------------------------------------------------------------
+--  Nettoyage de sécurité : supprime d'anciennes fonctions/déclencheurs
+--  orphelins qui pourraient subsister d'une installation précédente et
+--  qui bloqueraient certaines actions (ex. "relation ... does not exist").
+--  Sans danger : ne touche à aucune donnée, uniquement au code SQL.
+-- ---------------------------------------------------------------------
+do $$
+declare
+  r record;
+  v_names text[] := array['vehicle_sale_drafts'];
+  v_name text;
+begin
+  foreach v_name in array v_names loop
+    for r in
+      select p.oid::regprocedure as sig
+        from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname in ('public', 'private')
+         and p.prosrc ilike '%' || v_name || '%'
+    loop
+      execute format('drop function if exists %s cascade', r.sig);
+      raise notice 'Nettoyage : fonction obsolète supprimée (%).', r.sig;
+    end loop;
+  end loop;
+exception when others then
+  raise notice 'Nettoyage de sécurité ignoré (%). Ce n''est pas bloquant.', sqlerrm;
+end $$;
+
 -- Schéma "private" : fonctions internes et données sensibles.
 -- Il n'est PAS exposé par l'API Supabase (seul "public" l'est).
 create schema if not exists private;
